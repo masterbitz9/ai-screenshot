@@ -76,6 +76,7 @@ enum DrawingTool {
     case rectangle
     case circle
     case text
+    case eraser
 }
 
 struct DrawingElement {
@@ -284,7 +285,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         
         // Draw selection border
         context.setStrokeColor(NSColor.systemBlue.cgColor)
-        context.setLineWidth(2)
+        context.setLineWidth(1)
         context.stroke(rect)
     }
 
@@ -429,6 +430,8 @@ class SelectionView: NSView, NSTextFieldDelegate {
             }
         case .text:
             break
+        case .eraser:
+            break
         case .none:
             break
         }
@@ -492,10 +495,10 @@ class SelectionView: NSView, NSTextFieldDelegate {
     }
 
     private func drawCenterGuides(for rect: NSRect, in context: CGContext) {
-        let guideColor = NSColor(calibratedWhite: 1.0, alpha: 0.35)
+        let guideColor = NSColor(calibratedWhite: 1.0, alpha: 0.55)
         context.saveGState()
         context.setStrokeColor(guideColor.cgColor)
-        context.setLineWidth(1)
+        context.setLineWidth(1.5)
         context.setLineDash(phase: 0, lengths: [4, 4])
 
         let midX = rect.midX
@@ -542,7 +545,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         xOffset += actionButtonWidth + buttonSpacing
         let saveButton = createActionButton(icon: "saveIcon", x: xOffset, y: 4, action: #selector(saveImage))
         xOffset += actionButtonWidth + buttonSpacing
-        let closeButton = createActionButton(icon: "closeIcon", x: xOffset, y: 4, action: #selector(closeOverlay))
+        let closeButton = createActionButton(icon: "xmark.circle.fill", x: xOffset, y: 4, action: #selector(closeOverlay))
         xOffset += actionButtonWidth + buttonSpacing
         
         actionButtons = [copyButton, saveButton, closeButton]
@@ -562,7 +565,8 @@ class SelectionView: NSView, NSTextFieldDelegate {
             ("arrowIcon", .arrow),
             ("rectIcon", .rectangle),
             ("circleIcon", .circle),
-            ("textformat", .text)
+            ("textformat", .text),
+            ("eraser", .eraser)
         ]
         
         toolButtonTypes = tools.map { $0.1 }
@@ -876,6 +880,10 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 startTextEntry(at: location)
                 return
             }
+            if currentTool == .eraser {
+                eraseElement(at: location)
+                return
+            }
             if currentTool != .none {
                 // Start drawing
                 mode = .drawing
@@ -1123,6 +1131,9 @@ class SelectionView: NSView, NSTextFieldDelegate {
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { // ESC key
             closeOverlay()
+        } else if event.modifierFlags.contains(.command),
+                  event.charactersIgnoringModifiers?.lowercased() == "z" {
+            undoLastDrawing()
         } else {
             super.keyDown(with: event)
         }
@@ -1144,8 +1155,17 @@ class SelectionView: NSView, NSTextFieldDelegate {
     override func resetCursorRects() {
         super.resetCursorRects()
         guard currentTool == .none else { return }
-        for rect in controlPoints {
-            addCursorRect(rect.insetBy(dx: -4, dy: -4), cursor: .openHand)
+        for (index, rect) in controlPoints.enumerated() {
+            let cursor: NSCursor
+            switch index {
+            case 4, 5:
+                cursor = .resizeUpDown
+            case 6, 7:
+                cursor = .resizeLeftRight
+            default:
+                cursor = .resizeDiagonal
+            }
+            addCursorRect(rect.insetBy(dx: -4, dy: -4), cursor: cursor)
         }
     }
 
@@ -1168,7 +1188,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
 
     private func toolbarFrameForSelection(_ rect: NSRect, y: CGFloat) -> NSRect {
         let contentWidth = toolbarContentWidth()
-        let width = max(contentWidth + toolbarPadding * 2, rect.width * 0.6)
+        let width = contentWidth + toolbarPadding * 2
         var x = rect.midX - width / 2
         if x + width > bounds.maxX { x = bounds.maxX - width }
         if x < 0 { x = 0 }
@@ -1176,7 +1196,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
     }
 
     private func toolbarContentWidth() -> CGFloat {
-        let toolCount = 7
+        let toolCount = 8
         let actionWidth = actionButtonWidth * 3
         let toolWidth = toolButtonWidth * CGFloat(toolCount)
         let colorWidth = toolButtonWidth
@@ -1217,7 +1237,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
             y: flippedY * scaleY,
             width: rect.width * scaleX,
             height: rect.height * scaleY
-        ).integral
+        )
     }
 
     private func controlPointRects(for rect: NSRect) -> [NSRect] {
@@ -1233,6 +1253,90 @@ class SelectionView: NSView, NSTextFieldDelegate {
             NSRect(x: rect.minX - half, y: rect.midY - half, width: size, height: size), // Left-mid
             NSRect(x: rect.maxX - half, y: rect.midY - half, width: size, height: size)  // Right-mid
         ]
+    }
+
+    private func eraseElement(at point: NSPoint) {
+        let tolerance: CGFloat = 6
+        for (index, element) in drawingElements.enumerated().reversed() {
+            if elementHitTest(element, point: point, tolerance: tolerance) {
+                drawingElements.remove(at: index)
+                needsDisplay = true
+                return
+            }
+        }
+    }
+
+    private func elementHitTest(_ element: DrawingElement, point: NSPoint, tolerance: CGFloat) -> Bool {
+        switch element.type {
+        case .pen(let points):
+            return polylineHitTest(points: points, point: point, tolerance: tolerance)
+        case .line(let start, let end),
+             .arrow(let start, let end):
+            return distanceToSegment(point, start, end) <= tolerance
+        case .rectangle(let rect):
+            return rectEdgeHitTest(rect, point: point, tolerance: tolerance)
+        case .circle(let rect):
+            return ellipseEdgeHitTest(rect, point: point, tolerance: tolerance)
+        case .text(let text, let origin):
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: element.fontSize, weight: .semibold)
+            ]
+            let size = NSString(string: text).size(withAttributes: attributes)
+            let textRect = NSRect(x: origin.x, y: origin.y, width: size.width, height: size.height)
+            return textRect.insetBy(dx: -tolerance, dy: -tolerance).contains(point)
+        }
+    }
+
+    private func polylineHitTest(points: [NSPoint], point: NSPoint, tolerance: CGFloat) -> Bool {
+        guard points.count > 1 else { return false }
+        for idx in 0..<(points.count - 1) {
+            if distanceToSegment(point, points[idx], points[idx + 1]) <= tolerance {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func rectEdgeHitTest(_ rect: NSRect, point: NSPoint, tolerance: CGFloat) -> Bool {
+        let topLeft = NSPoint(x: rect.minX, y: rect.maxY)
+        let topRight = NSPoint(x: rect.maxX, y: rect.maxY)
+        let bottomLeft = NSPoint(x: rect.minX, y: rect.minY)
+        let bottomRight = NSPoint(x: rect.maxX, y: rect.minY)
+        return distanceToSegment(point, topLeft, topRight) <= tolerance ||
+            distanceToSegment(point, topRight, bottomRight) <= tolerance ||
+            distanceToSegment(point, bottomRight, bottomLeft) <= tolerance ||
+            distanceToSegment(point, bottomLeft, topLeft) <= tolerance
+    }
+
+    private func ellipseEdgeHitTest(_ rect: NSRect, point: NSPoint, tolerance: CGFloat) -> Bool {
+        let center = NSPoint(x: rect.midX, y: rect.midY)
+        let rx = rect.width / 2
+        let ry = rect.height / 2
+        guard rx > 0, ry > 0 else { return false }
+        let dx = point.x - center.x
+        let dy = point.y - center.y
+        let normalized = sqrt((dx * dx) / (rx * rx) + (dy * dy) / (ry * ry))
+        return abs(normalized - 1) <= (tolerance / max(rx, ry))
+    }
+
+    private func distanceToSegment(_ p: NSPoint, _ a: NSPoint, _ b: NSPoint) -> CGFloat {
+        let abx = b.x - a.x
+        let aby = b.y - a.y
+        let apx = p.x - a.x
+        let apy = p.y - a.y
+        let abLenSq = abx * abx + aby * aby
+        if abLenSq == 0 {
+            return hypot(apx, apy)
+        }
+        let t = max(0, min(1, (apx * abx + apy * aby) / abLenSq))
+        let closest = NSPoint(x: a.x + abx * t, y: a.y + aby * t)
+        return hypot(p.x - closest.x, p.y - closest.y)
+    }
+
+    private func undoLastDrawing() {
+        guard !drawingElements.isEmpty else { return }
+        drawingElements.removeLast()
+        needsDisplay = true
     }
 
     private func translateDrawingElements(by delta: NSPoint) {

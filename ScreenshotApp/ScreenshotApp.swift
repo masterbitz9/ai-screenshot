@@ -1,5 +1,6 @@
 import SwiftUI
 import ScreenCaptureKit
+import Carbon
 
 @main
 struct ScreenshotApp: App {
@@ -15,6 +16,8 @@ struct ScreenshotApp: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var screenshotManager: ScreenshotManager?
+    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyHandler: EventHandlerRef?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon
@@ -33,10 +36,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Initialize screenshot manager
         screenshotManager = ScreenshotManager()
+        registerGlobalHotKey()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         ProcessInfo.processInfo.enableAutomaticTermination("Keep menu bar app alive")
+        unregisterGlobalHotKey()
     }
     
     func requestScreenRecordingPermission() {
@@ -76,7 +81,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         let menu = NSMenu()
         
-        menu.addItem(NSMenuItem(title: "Take Screenshot...", action: #selector(takeScreenshot), keyEquivalent: ""))
+        let screenshotItem = NSMenuItem(title: "Take Screenshot...", action: #selector(takeScreenshot), keyEquivalent: "0")
+        screenshotItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(screenshotItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
         
@@ -93,5 +100,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    private func registerGlobalHotKey() {
+        var hotKeyId = EventHotKeyID(signature: OSType(UInt32(truncatingIfNeeded: ("SSAP" as NSString).hash)), id: 1)
+        let modifiers: UInt32 = UInt32(cmdKey | shiftKey)
+        let keyCode: UInt32 = UInt32(kVK_ANSI_0)
+        let status = RegisterEventHotKey(keyCode, modifiers, hotKeyId, GetApplicationEventTarget(), 0, &hotKeyRef)
+        guard status == noErr else {
+            print("Failed to register hotkey: \(status)")
+            return
+        }
+
+        var eventSpec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let handler: EventHandlerUPP = { _, _, userData in
+            guard let userData else { return OSStatus(eventNotHandledErr) }
+            let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
+            DispatchQueue.main.async {
+                delegate.takeScreenshot()
+            }
+            return noErr
+        }
+        InstallEventHandler(GetApplicationEventTarget(), handler, 1, &eventSpec, UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()), &hotKeyHandler)
+    }
+
+    private func unregisterGlobalHotKey() {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
+        if let hotKeyHandler {
+            RemoveEventHandler(hotKeyHandler)
+            self.hotKeyHandler = nil
+        }
     }
 }
