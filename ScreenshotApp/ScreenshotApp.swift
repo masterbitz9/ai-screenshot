@@ -103,7 +103,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func registerGlobalHotKey() {
-        var hotKeyId = EventHotKeyID(signature: OSType(UInt32(truncatingIfNeeded: ("SSAP" as NSString).hash)), id: 1)
+        let hotKeyId = EventHotKeyID(signature: OSType(UInt32(truncatingIfNeeded: ("SSAP" as NSString).hash)), id: 1)
         let modifiers: UInt32 = UInt32(cmdKey | shiftKey)
         let keyCode: UInt32 = UInt32(kVK_ANSI_0)
         let status = RegisterEventHotKey(keyCode, modifiers, hotKeyId, GetApplicationEventTarget(), 0, &hotKeyRef)
