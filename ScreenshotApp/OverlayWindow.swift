@@ -338,6 +338,8 @@ class SelectionView: NSView, NSTextFieldDelegate {
     var aiPromptField: NSTextField?
     var aiSendButton: ToolbarButton?
     var aiSelectButton: ToolbarButton?
+    var aiSendSpinner: NSProgressIndicator?
+    var aiIsSendingPrompt: Bool = false
     var aiEditRect: NSRect?
     var aiEditStartPoint: NSPoint?
     var aiEditCurrentPoint: NSPoint?
@@ -425,9 +427,9 @@ class SelectionView: NSView, NSTextFieldDelegate {
             drawElementHighlights(in: context)
             
             // Draw current drawing
-            if mode == .drawing {
-                drawCurrentDrawing(in: context)
-            }
+                if mode == .drawing {
+                    drawCurrentDrawing(in: context)
+                }
                 if let aiRect = aiEditRect {
                     drawAIEditRect(aiRect, in: context)
                 } else if aiIsSelectingEditRect,
@@ -461,11 +463,14 @@ class SelectionView: NSView, NSTextFieldDelegate {
 
     private func drawAIEditRect(_ rect: NSRect, in context: CGContext) {
         context.saveGState()
-        context.setStrokeColor(NSColor(calibratedWhite: 1.0, alpha: 0.10).cgColor)
-        context.setLineWidth(2)
+        context.setBlendMode(.difference)
+        context.setStrokeColor(NSColor(calibratedWhite: 1.0, alpha: 0.4).cgColor)
+        context.setLineWidth(1)
+        context.setLineDash(phase: 0, lengths: [6, 4])
         context.stroke(rect)
         context.restoreGState()
     }
+
 
     private func drawFullScreenImage(in context: CGContext) {
         context.draw(screenImage, in: bounds)
@@ -1197,8 +1202,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         }
 
         if currentTool == .ai, aiIsSelectingEditRect {
-            guard let baseRect = selectedRect, baseRect.contains(location) else { return }
-            aiEditStartPoint = clampedPoint(location, to: baseRect)
+            aiEditStartPoint = clampedPoint(location)
             aiEditCurrentPoint = aiEditStartPoint
             aiEditRect = nil
             needsDisplay = true
@@ -1291,8 +1295,8 @@ class SelectionView: NSView, NSTextFieldDelegate {
     
     override func mouseDragged(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
-        if aiIsSelectingEditRect, let baseRect = selectedRect, let start = aiEditStartPoint {
-            let current = clampedPoint(location, to: baseRect)
+        if aiIsSelectingEditRect, let start = aiEditStartPoint {
+            let current = clampedPoint(location)
             aiEditCurrentPoint = current
             aiEditRect = normalizedRect(from: start, to: current)
             needsDisplay = true
@@ -1354,15 +1358,15 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 aiIsSelectingEditRect = false
                 aiEditStartPoint = nil
                 aiEditCurrentPoint = nil
+                aiSelectButton?.isActiveAppearance = false
                 needsDisplay = true
             }
-            guard let baseRect = selectedRect,
-                  let start = aiEditStartPoint,
+            guard let start = aiEditStartPoint,
                   let current = aiEditCurrentPoint else {
                 aiEditRect = nil
                 return
             }
-            let rect = normalizedRect(from: start, to: current).intersection(baseRect)
+            let rect = normalizedRect(from: start, to: current).intersection(bounds)
             if rect.width > 6 && rect.height > 6 {
                 aiEditRect = rect
             } else {
@@ -1595,6 +1599,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
             return
         }
         showAIPrompt()
+        aiSelectButton?.isActiveAppearance = aiIsSelectingEditRect
         updateAIPromptPosition()
     }
 
@@ -1628,6 +1633,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         selectButton.target = self
         selectButton.action = #selector(reselectAIRegion)
         selectButton.groupPosition = .single
+        selectButton.isActiveAppearance = aiIsSelectingEditRect
         aiSelectButton = selectButton
 
         let sendButton = createIconButton(icon: "paperplane.fill", x: 0, y: 4)
@@ -1636,11 +1642,20 @@ class SelectionView: NSView, NSTextFieldDelegate {
         sendButton.groupPosition = .single
         aiSendButton = sendButton
 
+        let spinner = NSProgressIndicator()
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isIndeterminate = true
+        spinner.isDisplayedWhenStopped = false
+        aiSendSpinner = spinner
+
         promptView.addSubview(field)
         promptView.addSubview(selectButton)
         promptView.addSubview(sendButton)
+        promptView.addSubview(spinner)
         aiPromptView = promptView
         addSubview(promptView)
+        updateSendState()
     }
 
     private func hideAIPrompt() {
@@ -1649,6 +1664,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         aiPromptField = nil
         aiSendButton = nil
         aiSelectButton = nil
+        aiSendSpinner = nil
     }
 
     private func aiPromptWidth(for rect: NSRect) -> CGFloat {
@@ -1682,13 +1698,25 @@ class SelectionView: NSView, NSTextFieldDelegate {
         let selectX = padding + fieldWidth + buttonSpacing
         aiPromptField?.frame = NSRect(x: padding, y: fieldY, width: fieldWidth, height: fieldHeight)
         aiSelectButton?.frame = NSRect(x: selectX, y: buttonsY, width: buttonWidth, height: 28)
-        aiSendButton?.frame = NSRect(x: selectX + buttonWidth + buttonSpacing, y: buttonsY, width: buttonWidth, height: 28)
+        let sendFrame = NSRect(x: selectX + buttonWidth + buttonSpacing, y: buttonsY, width: buttonWidth, height: 28)
+        aiSendButton?.frame = sendFrame
+        aiSendSpinner?.frame = NSRect(
+            x: sendFrame.midX - 8,
+            y: sendFrame.midY - 8,
+            width: 16,
+            height: 16
+        )
     }
 
     @objc private func sendAIPrompt() {
         guard let field = aiPromptField else { return }
         let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else {
+            updateSendState()
+            return
+        }
+        aiIsSendingPrompt = true
+        updateSendState()
         field.stringValue = ""
         showNotification(message: "AI prompt queued")
     }
@@ -1698,7 +1726,24 @@ class SelectionView: NSView, NSTextFieldDelegate {
         aiEditRect = nil
         aiEditStartPoint = nil
         aiEditCurrentPoint = nil
+        aiSelectButton?.isActiveAppearance = true
     }
+
+    private func updateSendState() {
+        let isSending = aiIsSendingPrompt
+        let promptText = aiPromptField?.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let hasPrompt = !promptText.isEmpty
+        aiSendButton?.isEnabled = !isSending && hasPrompt
+        aiSendButton?.alphaValue = (isSending || !hasPrompt) ? 0.4 : 1.0
+        aiSelectButton?.isEnabled = !isSending
+        aiSelectButton?.alphaValue = isSending ? 0.4 : 1.0
+        if isSending {
+            aiSendSpinner?.startAnimation(nil)
+        } else {
+            aiSendSpinner?.stopAnimation(nil)
+        }
+    }
+
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if control === aiPromptField, commandSelector == #selector(insertNewline(_:)) {
@@ -1706,6 +1751,12 @@ class SelectionView: NSView, NSTextFieldDelegate {
             return true
         }
         return false
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        if let field = obj.object as? NSTextField, field === aiPromptField {
+            updateSendState()
+        }
     }
     
     override func keyDown(with event: NSEvent) {
