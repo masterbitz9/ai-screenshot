@@ -118,7 +118,7 @@ enum SwatchStyle {
     case fill
 }
 
-final class ToolbarButton: NSButton {
+class ToolbarButton: NSButton {
     var baseColor = NSColor(calibratedRed: 0.16, green: 0.19, blue: 0.26, alpha: 1.0)
     var accentColor: NSColor?
     var isActiveAppearance = false {
@@ -183,11 +183,8 @@ final class ToolbarButton: NSButton {
     }
 }
 
-final class ColorSwatchButton: NSButton {
+final class ColorSwatchButton: ToolbarButton {
     var swatchColor: NSColor = .red {
-        didSet { needsDisplay = true }
-    }
-    var groupPosition: ToolbarGroupPosition = .single {
         didSet { needsDisplay = true }
     }
     var swatchStyle: SwatchStyle = .fill {
@@ -202,15 +199,8 @@ final class ColorSwatchButton: NSButton {
     }
 
     override func updateLayer() {
-        wantsLayer = true
+        super.updateLayer()
         guard let layer = layer else { return }
-        applyGroupCorners(to: layer)
-        layer.backgroundColor = NSColor(calibratedRed: 0.16, green: 0.19, blue: 0.26, alpha: 1.0).cgColor
-        layer.borderWidth = 0
-        layer.borderColor = NSColor.clear.cgColor
-        layer.shadowOpacity = 0
-        layer.shadowRadius = 0
-        layer.shadowOffset = .zero
 
         if indicatorLayer.superlayer == nil {
             layer.addSublayer(indicatorLayer)
@@ -328,6 +318,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
     var selectedElementIndex: Int?
     var hoverEraserIndex: Int?
     private var trackingArea: NSTrackingArea?
+    private lazy var eyedropperCursor: NSCursor = makeEyedropperCursor()
     
     // UI Elements
     var toolButtons: [ToolbarButton] = []
@@ -789,7 +780,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         let tools: [(String, DrawingTool)] = [
             ("arrow.up.and.down.and.arrow.left.and.right", .move),
             ("cursorarrow", .none),
-            ("pencil", .pen),
+            ("scribble", .pen),
             ("line.diagonal", .line),
             ("arrow.up.right", .arrow),
             ("rectangle", .rectangle),
@@ -957,17 +948,23 @@ class SelectionView: NSView, NSTextFieldDelegate {
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.png]
         savePanel.nameFieldStringValue = "Screenshot \(Date().timeIntervalSince1970).png"
+        savePanel.canCreateDirectories = true
         if let directoryURL = SettingsStore.saveDirectoryURL {
             savePanel.directoryURL = directoryURL
         }
-        
-        savePanel.begin { response in
-            if response == .OK, let url = savePanel.url {
-                if let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) {
-                    CGImageDestinationAddImage(destination, finalImage, nil)
-                    CGImageDestinationFinalize(destination)
-                    self.showNotification(message: "Image saved")
+
+        NSApp.activate(ignoringOtherApps: true)
+        let response = savePanel.runModal()
+        if response == .OK, let url = savePanel.url {
+            if let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) {
+                CGImageDestinationAddImage(destination, finalImage, nil)
+                if CGImageDestinationFinalize(destination) {
+                    showNotification(message: "Image saved")
+                } else {
+                    showNotification(message: "Save failed")
                 }
+            } else {
+                showNotification(message: "Save failed")
             }
         }
         NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
@@ -1006,6 +1003,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         currentTool = .eyedropper
         updateToolButtonStates()
         hideColorPicker()
+        eyedropperCursor.set()
         needsDisplay = true
     }
 
@@ -1148,6 +1146,16 @@ class SelectionView: NSView, NSTextFieldDelegate {
     override func mouseDown(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
 
+        let pickerViews: [NSView?] = [colorPickerView, lineWidthPickerView, fontPickerView]
+        if pickerViews.contains(where: { $0?.frame.contains(location) == true }) {
+            return
+        }
+        if pickerViews.contains(where: { $0 != nil }) {
+            hideColorPicker()
+            hideLineWidthPicker()
+            hideFontPicker()
+        }
+
         if let toolbar = toolbarView, toolbar.frame.contains(location) {
             let localPoint = toolbar.convert(location, from: self)
             let hitView = toolbar.hitTest(localPoint)
@@ -1200,7 +1208,6 @@ class SelectionView: NSView, NSTextFieldDelegate {
                     selectedElementIndex = index
                     mode = .elementDragging
                     lastDragPoint = location
-                    NSCursor.closedHand.set()
                     needsDisplay = true
                     return
                 }
@@ -1218,7 +1225,6 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 selectedElementIndex = nil
                 mode = .dragging
                 dragOffset = NSPoint(x: location.x - rect.origin.x, y: location.y - rect.origin.y)
-                NSCursor.closedHand.set()
             }
             return
         }
@@ -1250,6 +1256,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
             needsDisplay = true
             
         case .dragging:
+            NSCursor.closedHand.set()
             guard var rect = selectedRect else { return }
             let oldOrigin = rect.origin
             rect.origin = NSPoint(x: location.x - dragOffset.x, y: location.y - dragOffset.y)
@@ -1280,6 +1287,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
             needsDisplay = true
             
         case .elementDragging:
+            NSCursor.closedHand.set()
             if let last = lastDragPoint, let index = selectedElementIndex {
                 let delta = NSPoint(x: location.x - last.x, y: location.y - last.y)
                 translateDrawingElement(at: index, by: delta)
@@ -1539,6 +1547,10 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 addCursorRect(rect, cursor: .crosshair)
                 return
             }
+            if currentTool == .eyedropper {
+                addCursorRect(rect, cursor: eyedropperCursor)
+                return
+            }
             if currentTool == .move {
                 addCursorRect(rect, cursor: .openHand)
             }
@@ -1581,6 +1593,10 @@ class SelectionView: NSView, NSTextFieldDelegate {
         } else if hoverEraserIndex != nil {
             hoverEraserIndex = nil
             needsDisplay = true
+        }
+        if currentTool == .eyedropper, let rect = selectedRect, rect.contains(location),
+           mode != .dragging, mode != .resizing, mode != .elementDragging {
+            eyedropperCursor.set()
         }
         if isDrawingTool, let rect = selectedRect, rect.contains(location),
            mode != .dragging, mode != .resizing, mode != .elementDragging {
@@ -1707,6 +1723,19 @@ class SelectionView: NSView, NSTextFieldDelegate {
         if index == 0 { return .first }
         if index == count - 1 { return .last }
         return .middle
+    }
+
+    private func makeEyedropperCursor() -> NSCursor {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSColor.clear.set()
+        NSRect(origin: .zero, size: size).fill()
+        let symbol = NSImage(systemSymbolName: "eyedropper", accessibilityDescription: nil)
+        symbol?.size = size
+        symbol?.draw(in: NSRect(origin: .zero, size: size))
+        image.unlockFocus()
+        return NSCursor(image: image, hotSpot: NSPoint(x: 2, y: 2))
     }
 
     private func clampedPoint(_ point: NSPoint) -> NSPoint {

@@ -92,13 +92,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let screenshotItem = NSMenuItem(title: "Take Screenshot...", action: #selector(takeScreenshot), keyEquivalent: "0")
         screenshotItem.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(screenshotItem)
-        menu.addItem(NSMenuItem.separator())
 
-        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem.keyEquivalentModifierMask = [.command]
+        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: "")
+        settingsItem.image = nil
+        settingsItem.onStateImage = nil
+        settingsItem.offStateImage = nil
+        settingsItem.mixedStateImage = nil
         menu.addItem(settingsItem)
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: ""))
         
         statusItem?.menu = menu
     }
@@ -108,8 +109,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        NSApp.activate(ignoringOtherApps: true)
+        SettingsWindowController.shared.show()
     }
     
     @objc func quit() {
