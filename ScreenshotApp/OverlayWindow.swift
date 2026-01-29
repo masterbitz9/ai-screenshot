@@ -1643,7 +1643,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         let w = Int(relativeRect.width.rounded())
         let h = Int(relativeRect.height.rounded())
         let regionText = "Region: x=\(x), y=\(y), w=\(w), h=\(h) (px, origin top-left of cropped image)"
-        return "\(userText)\n\n\(regionText)"
+        return "\(userText)\nfor this region: \(regionText)"
     }
 
     private func pngData(for image: CGImage) -> Data? {

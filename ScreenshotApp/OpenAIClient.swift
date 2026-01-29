@@ -10,14 +10,16 @@ enum OpenAIClientError: Error {
 
 struct OpenAIClient {
     private static let endpoint = URL(string: "https://api.openai.com/v1/images/edits")!
-    private static let model = "gpt-image-1"
+    private static let model = "gpt-image-1-mini"
     private static let logFilename = "openai.log"
+    private static let requestTimeout: TimeInterval = 120
 
     static func editImage(apiKey: String, prompt: String, imageData: Data) async throws -> CGImage {
         writeLog("request started (bytes=\(imageData.count))")
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
+        request.timeoutInterval = requestTimeout
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
@@ -46,8 +48,9 @@ struct OpenAIClient {
 
         let data: Data
         let response: URLResponse
+        let session = URLSession(configuration: makeSessionConfiguration())
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch {
             writeLog("request error: \(error)")
             throw error
@@ -108,6 +111,13 @@ struct OpenAIClient {
         }
         return URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent(logFilename)
+    }
+
+    private static func makeSessionConfiguration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = requestTimeout
+        configuration.timeoutIntervalForResource = requestTimeout * 2
+        return configuration
     }
 }
 
