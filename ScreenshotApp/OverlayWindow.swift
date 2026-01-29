@@ -759,7 +759,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         // Action buttons (left)
         let contentWidth = toolbarContentWidth()
         var xOffset = toolbarGroupStartX(toolbarWidth: toolbarFrame.width, contentWidth: contentWidth)
-        let actionIcons = ["doc.on.doc", "square.and.arrow.down", "xmark.circle.fill"]
+        let actionIcons = ["doc.on.doc", "internaldrive", "xmark"]
         let actionSelectors: [Selector] = [#selector(copyToClipboard), #selector(saveImage), #selector(closeOverlay)]
         actionButtons = []
         for (index, icon) in actionIcons.enumerated() {
@@ -869,6 +869,10 @@ class SelectionView: NSView, NSTextFieldDelegate {
         
         button.accentColor = NSColor(calibratedRed: 0.20, green: 0.64, blue: 1.0, alpha: 1.0)
         button.isActiveAppearance = (tool == .none)
+        if tool == .ai {
+            button.isEnabled = false
+            button.alphaValue = 0.4
+        }
         
         return button
     }
@@ -944,28 +948,32 @@ class SelectionView: NSView, NSTextFieldDelegate {
     @objc private func saveImage() {
         guard let rect = selectedRect else { return }
         let finalImage = renderFinalImage(for: rect)
-        
-        let savePanel = NSSavePanel()
-        savePanel.allowedContentTypes = [.png]
-        savePanel.nameFieldStringValue = "Screenshot \(Date().timeIntervalSince1970).png"
-        savePanel.canCreateDirectories = true
-        if let directoryURL = SettingsStore.saveDirectoryURL {
-            savePanel.directoryURL = directoryURL
+        let fileManager = FileManager.default
+        let cacheDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
+        let bundleId = Bundle.main.bundleIdentifier ?? "ScreenshotApp"
+        let targetDirectory = cacheDirectory?.appendingPathComponent(bundleId, isDirectory: true)
+        if let targetDirectory {
+            do {
+                try fileManager.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+            } catch {
+                showNotification(message: "Save failed")
+                NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
+                return
+            }
         }
+        let filename = "Screenshot-\(Int(Date().timeIntervalSince1970)).png"
+        let fallbackDirectory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        let targetURL = (targetDirectory ?? cacheDirectory ?? fallbackDirectory).appendingPathComponent(filename)
 
-        NSApp.activate(ignoringOtherApps: true)
-        let response = savePanel.runModal()
-        if response == .OK, let url = savePanel.url {
-            if let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil) {
-                CGImageDestinationAddImage(destination, finalImage, nil)
-                if CGImageDestinationFinalize(destination) {
-                    showNotification(message: "Image saved")
-                } else {
-                    showNotification(message: "Save failed")
-                }
+        if let destination = CGImageDestinationCreateWithURL(targetURL as CFURL, UTType.png.identifier as CFString, 1, nil) {
+            CGImageDestinationAddImage(destination, finalImage, nil)
+            if CGImageDestinationFinalize(destination) {
+                showNotification(message: "Saved to cache")
             } else {
                 showNotification(message: "Save failed")
             }
+        } else {
+            showNotification(message: "Save failed")
         }
         NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
     }
@@ -1511,6 +1519,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
     private func updateFontButtonState() {
         let enabled = currentTool == .text
         fontSettingsButton?.isEnabled = enabled
+        fontSettingsButton?.alphaValue = enabled ? 1.0 : 0.4
         if !enabled {
             hideFontPicker()
         }
@@ -1754,12 +1763,20 @@ class SelectionView: NSView, NSTextFieldDelegate {
         let scaleX = CGFloat(screenImage.width) / bounds.width
         let scaleY = CGFloat(screenImage.height) / bounds.height
         let flippedY = bounds.height - rect.maxY
-        return CGRect(
+        var imageRect = CGRect(
             x: rect.minX * scaleX,
             y: flippedY * scaleY,
             width: rect.width * scaleX,
             height: rect.height * scaleY
         )
+        imageRect = imageRect.integral
+        let maxX = CGFloat(screenImage.width)
+        let maxY = CGFloat(screenImage.height)
+        imageRect.origin.x = max(0, min(imageRect.origin.x, maxX))
+        imageRect.origin.y = max(0, min(imageRect.origin.y, maxY))
+        imageRect.size.width = max(0, min(imageRect.size.width, maxX - imageRect.origin.x))
+        imageRect.size.height = max(0, min(imageRect.size.height, maxY - imageRect.origin.y))
+        return imageRect
     }
 
     private func colorAtViewPoint(_ point: NSPoint) -> NSColor? {

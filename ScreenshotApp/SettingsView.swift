@@ -1,28 +1,6 @@
 import SwiftUI
 import Carbon
 
-private struct PlaceholderModifier: ViewModifier {
-    let text: String
-    let isVisible: Bool
-
-    func body(content: Content) -> some View {
-        ZStack(alignment: .leading) {
-            if isVisible {
-                Text(text)
-                    .foregroundColor(Color(NSColor.placeholderTextColor))
-                    .padding(.horizontal, 8)
-            }
-            content
-        }
-    }
-}
-
-private extension View {
-    func placeholder(_ text: String, when isVisible: Bool = true) -> some View {
-        modifier(PlaceholderModifier(text: text, isVisible: isVisible))
-    }
-}
-
 struct SettingsView: View {
     @State private var hotKeyCode: Int = Int(kVK_ANSI_0)
     @State private var hotKeyCommand: Bool = true
@@ -41,10 +19,9 @@ struct SettingsView: View {
                 .frame(height: 28)
             }
 
-            Section(header: Text("AI Mode")) {
-                TextField("API Key", text: $apiKey)
+            Section(header: Text("API Key")) {
+                TextField("", text: $apiKey, prompt: Text("sk-proj-..."))
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .placeholder("sk-proj-...", when: apiKey.isEmpty)
             }
 
             HStack {
@@ -163,6 +140,7 @@ struct SettingsView: View {
         defaults.set(hotKeyControl, forKey: SettingsStore.Key.hotKeyControl)
         defaults.set(apiKey, forKey: SettingsStore.Key.apiKey)
         NotificationCenter.default.post(name: .hotkeyPreferencesDidChange, object: nil)
+        loadFromDefaults()
     }
 }
 
