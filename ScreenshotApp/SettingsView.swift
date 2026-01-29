@@ -1,5 +1,6 @@
 import SwiftUI
 import Carbon
+import AppKit
 
 struct SettingsView: View {
     @State private var hotKeyCode: Int = Int(kVK_ANSI_0)
@@ -8,6 +9,7 @@ struct SettingsView: View {
     @State private var hotKeyOption: Bool = false
     @State private var hotKeyControl: Bool = false
     @State private var apiKey: String = ""
+    @State private var aiModel: String = SettingsStore.defaultAIModel
     @State private var devModeEnabled: Bool = false
     @Environment(\.dismiss) private var dismiss
 
@@ -21,9 +23,15 @@ struct SettingsView: View {
                 .frame(height: 28)
             }
 
-            Section(header: Text("API Key")) {
+            Section(header: Text("AI")) {
                 TextField("", text: $apiKey, prompt: Text("sk-proj-..."))
                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                HStack {
+                    Text("Model")
+                    Spacer()
+                    AIModelPicker(selection: $aiModel, items: SettingsStore.availableAIModels)
+                        .frame(width: 200)
+                }
             }
 
             Toggle("Dev mode", isOn: $devModeEnabled)
@@ -122,6 +130,7 @@ struct SettingsView: View {
         hotKeyOption = defaults.bool(forKey: SettingsStore.Key.hotKeyOption)
         hotKeyControl = defaults.bool(forKey: SettingsStore.Key.hotKeyControl)
         apiKey = defaults.string(forKey: SettingsStore.Key.apiKey) ?? ""
+        aiModel = defaults.string(forKey: SettingsStore.Key.aiModel) ?? SettingsStore.defaultAIModel
         devModeEnabled = defaults.bool(forKey: SettingsStore.Key.devModeEnabled)
     }
 
@@ -133,6 +142,7 @@ struct SettingsView: View {
         if defaults.bool(forKey: SettingsStore.Key.hotKeyOption) != hotKeyOption { return true }
         if defaults.bool(forKey: SettingsStore.Key.hotKeyControl) != hotKeyControl { return true }
         if (defaults.string(forKey: SettingsStore.Key.apiKey) ?? "") != apiKey { return true }
+        if (defaults.string(forKey: SettingsStore.Key.aiModel) ?? SettingsStore.defaultAIModel) != aiModel { return true }
         if defaults.bool(forKey: SettingsStore.Key.devModeEnabled) != devModeEnabled { return true }
         return false
     }
@@ -145,6 +155,7 @@ struct SettingsView: View {
         defaults.set(hotKeyOption, forKey: SettingsStore.Key.hotKeyOption)
         defaults.set(hotKeyControl, forKey: SettingsStore.Key.hotKeyControl)
         defaults.set(apiKey, forKey: SettingsStore.Key.apiKey)
+        defaults.set(aiModel, forKey: SettingsStore.Key.aiModel)
         defaults.set(devModeEnabled, forKey: SettingsStore.Key.devModeEnabled)
         NotificationCenter.default.post(name: .hotkeyPreferencesDidChange, object: nil)
         loadFromDefaults()
@@ -166,6 +177,46 @@ struct HotKeyRecorder: NSViewRepresentable {
 
     func updateNSView(_ nsView: HotKeyRecorderView, context: Context) {
         nsView.displayText = displayText
+    }
+}
+
+struct AIModelPicker: NSViewRepresentable {
+    @Binding var selection: String
+    let items: [String]
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(selection: $selection)
+    }
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = NSPopUpButton()
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.selectionChanged(_:))
+        button.addItems(withTitles: items)
+        if let index = items.firstIndex(of: selection) {
+            button.selectItem(at: index)
+        }
+        return button
+    }
+
+    func updateNSView(_ nsView: NSPopUpButton, context: Context) {
+        nsView.removeAllItems()
+        nsView.addItems(withTitles: items)
+        if let index = items.firstIndex(of: selection) {
+            nsView.selectItem(at: index)
+        }
+    }
+
+    final class Coordinator: NSObject {
+        @Binding private var selection: String
+
+        init(selection: Binding<String>) {
+            _selection = selection
+        }
+
+        @objc func selectionChanged(_ sender: NSPopUpButton) {
+            selection = sender.titleOfSelectedItem ?? selection
+        }
     }
 }
 

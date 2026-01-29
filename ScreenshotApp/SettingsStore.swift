@@ -14,8 +14,15 @@ enum SettingsStore {
         static let hotKeyControl = "hotkey.modifier.control"
         static let saveDirectoryPath = "save.directory.path"
         static let apiKey = "ai.api.key"
+        static let aiModel = "ai.model"
         static let devModeEnabled = "ai.dev.mode.enabled"
     }
+
+    static let availableAIModels = [
+        "gpt-image-1-mini",
+        "gpt-image-1"
+    ]
+    static let defaultAIModel = "gpt-image-1-mini"
 
     static func registerDefaults() {
         UserDefaults.standard.register(defaults: [
@@ -24,6 +31,7 @@ enum SettingsStore {
             Key.hotKeyShift: true,
             Key.hotKeyOption: false,
             Key.hotKeyControl: false,
+            Key.aiModel: defaultAIModel,
             Key.devModeEnabled: false
         ])
     }
@@ -49,6 +57,10 @@ enum SettingsStore {
 
     static var apiKeyValue: String {
         UserDefaults.standard.string(forKey: Key.apiKey) ?? ""
+    }
+
+    static var aiModelValue: String {
+        UserDefaults.standard.string(forKey: Key.aiModel) ?? defaultAIModel
     }
 
     static var devModeEnabled: Bool {

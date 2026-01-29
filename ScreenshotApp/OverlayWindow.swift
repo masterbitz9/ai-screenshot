@@ -341,7 +341,15 @@ class SelectionView: NSView, NSTextFieldDelegate {
     var aiSelectButton: ToolbarButton?
     var aiLogButton: ToolbarButton?
     var aiSendSpinner: NSProgressIndicator?
-    var aiIsSendingPrompt: Bool = false
+    var aiIsSendingPrompt: Bool = false {
+        didSet {
+            if aiIsSendingPrompt {
+                startAIDashAnimation()
+            } else {
+                stopAIDashAnimation()
+            }
+        }
+    }
     var aiStatusLabel: NSTextField?
     var aiResultImage: CGImage?
     var aiEditRect: NSRect?
@@ -359,6 +367,11 @@ class SelectionView: NSView, NSTextFieldDelegate {
     private let aiPromptHeight: CGFloat = 56
     private let aiPromptMinWidth: CGFloat = 240
     private let aiPromptMaxWidth: CGFloat = 520
+    private let aiDashPattern: [CGFloat] = [6, 4, 1, 4]
+    private let aiDashInterval: TimeInterval = 1.0 / 30.0
+    private let aiDashIncrement: CGFloat = 1.2
+    private var aiDashPhase: CGFloat = 0
+    private var aiDashTimer: Timer?
     private let fontChoices: [(label: String, name: String)] = [
         ("System", NSFont.systemFont(ofSize: 16).fontName),
         ("Monospace", NSFont.monospacedSystemFont(ofSize: 16, weight: .regular).fontName),
@@ -402,6 +415,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
     
     deinit {
         NotificationCenter.default.removeObserver(self)
+        stopAIDashAnimation()
     }
     
     override func draw(_ dirtyRect: NSRect) {
@@ -434,13 +448,18 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 if mode == .drawing {
                     drawCurrentDrawing(in: context)
                 }
-                if let aiRect = aiEditRect {
-                    drawAIEditRect(aiRect, in: context)
-                } else if aiIsSelectingEditRect,
-                          let start = aiEditStartPoint,
-                          let current = aiEditCurrentPoint {
-                    let aiRect = normalizedRect(from: start, to: current)
-                    drawAIEditRect(aiRect, in: context)
+                if aiIsSendingPrompt, currentTool == .ai {
+                    let borderRect = aiEditRect ?? rect
+                    drawAIProcessingBorder(borderRect, in: context)
+                } else {
+                    if let aiRect = aiEditRect {
+                        drawAIEditRect(aiRect, in: context)
+                    } else if aiIsSelectingEditRect,
+                              let start = aiEditStartPoint,
+                              let current = aiEditCurrentPoint {
+                        let aiRect = normalizedRect(from: start, to: current)
+                        drawAIEditRect(aiRect, in: context)
+                    }
                 }
             
             // Draw control points
@@ -470,11 +489,42 @@ class SelectionView: NSView, NSTextFieldDelegate {
     private func drawAIEditRect(_ rect: NSRect, in context: CGContext) {
         context.saveGState()
         context.setBlendMode(.difference)
-        context.setStrokeColor(NSColor(calibratedWhite: 1.0, alpha: 0.4).cgColor)
-        context.setLineWidth(1)
+        context.setStrokeColor(NSColor(calibratedWhite: 1.0, alpha: 0.7).cgColor)
+        context.setLineWidth(1.5)
         context.setLineDash(phase: 0, lengths: [6, 4])
         context.stroke(rect)
         context.restoreGState()
+    }
+
+    private func drawAIProcessingBorder(_ rect: NSRect, in context: CGContext) {
+        context.saveGState()
+        context.setBlendMode(.normal)
+        context.setStrokeColor(NSColor(calibratedWhite: 1.0, alpha: 0.7).cgColor)
+        context.setLineWidth(1.5)
+        context.setLineDash(phase: aiDashPhase, lengths: aiDashPattern)
+        context.stroke(rect.insetBy(dx: 1, dy: 1))
+        context.restoreGState()
+    }
+
+    private func startAIDashAnimation() {
+        guard aiDashTimer == nil else { return }
+        aiDashPhase = 0
+        let timer = Timer(timeInterval: aiDashInterval, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            let patternLength = self.aiDashPattern.reduce(0, +)
+            self.aiDashPhase += self.aiDashIncrement
+            if self.aiDashPhase > patternLength {
+                self.aiDashPhase -= patternLength
+            }
+            self.needsDisplay = true
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        aiDashTimer = timer
+    }
+
+    private func stopAIDashAnimation() {
+        aiDashTimer?.invalidate()
+        aiDashTimer = nil
     }
 
 
@@ -973,7 +1023,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
     
     @objc private func copyToClipboard() {
         guard let rect = selectedRect else { return }
-        let finalImage = renderFinalImage(for: rect)
+        let finalImage = aiResultImage ?? renderFinalImage(for: rect)
         let nsImage = NSImage(cgImage: finalImage, size: NSSize(width: finalImage.width, height: finalImage.height))
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
@@ -985,7 +1035,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
 
     @objc private func saveImage() {
         guard let rect = selectedRect else { return }
-        let finalImage = renderFinalImage(for: rect)
+        let finalImage = aiResultImage ?? renderFinalImage(for: rect)
         let fileManager = FileManager.default
         let cacheDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
         let bundleId = Bundle.main.bundleIdentifier ?? "ScreenshotApp"
@@ -1071,8 +1121,10 @@ class SelectionView: NSView, NSTextFieldDelegate {
             return screenImage.cropping(to: rect) ?? screenImage
         }
         
-        // Draw cropped screen image
-        if let croppedImage = screenImage.cropping(to: imageRect) {
+        // Draw base image (AI result if available, otherwise cropped screen)
+        if let aiResultImage, aiResultImage.width == width, aiResultImage.height == height {
+            context.draw(aiResultImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        } else if let croppedImage = screenImage.cropping(to: imageRect) {
             context.draw(croppedImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         }
         
@@ -1642,8 +1694,13 @@ class SelectionView: NSView, NSTextFieldDelegate {
         let y = Int(relativeRect.origin.y.rounded())
         let w = Int(relativeRect.width.rounded())
         let h = Int(relativeRect.height.rounded())
-        let regionText = "Region: x=\(x), y=\(y), w=\(w), h=\(h) (px, origin top-left of cropped image)"
-        return "\(userText)\nfor this region: \(regionText)"
+
+        let prompt = "You are editing an image.\n\nTask:\n\(userText)"
+        let constraints = "STRICT CONSTRAINTS:\n- Modify ONLY the pixels inside the specified region.\n- Do NOT change anything outside this region.\n- Maintain original style, lighting, and perspective.\n- Blend edges naturally.\n- Keep the original image as close as possible.\n- Keep the ratio of the original image."
+        let regionText = "Target region (pixels, origin = top-left of cropped image):\nx=\(x), y=\(y), width=\(w), height=\(h)"
+        let suffix = "If the change cannot be done entirely inside this region, make no changes."
+
+        return "\(prompt)\n\n\(constraints)\n\n\(regionText)\n\n\(suffix)"
     }
 
     private func pngData(for image: CGImage) -> Data? {
@@ -1811,10 +1868,16 @@ class SelectionView: NSView, NSTextFieldDelegate {
         aiIsSendingPrompt = true
         updateSendState()
         field.stringValue = ""
-        updateAIStatus("AI: sending request...")
+        updateAIStatus("AI: processing...")
         Task { [weak self] in
             do {
-                let resultImage = try await OpenAIClient.editImage(apiKey: apiKey, prompt: prompt, imageData: imageData)
+                let model = SettingsStore.aiModelValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                let resultImage = try await OpenAIClient.editImage(
+                    apiKey: apiKey,
+                    model: model,
+                    prompt: prompt,
+                    imageData: imageData
+                )
                 await MainActor.run {
                     self?.aiResultImage = resultImage
                     self?.aiIsSendingPrompt = false
@@ -1829,7 +1892,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 await MainActor.run {
                     self?.aiIsSendingPrompt = false
                     self?.updateSendState()
-                    self?.updateAIStatus("AI: request failed")
+                    self?.updateAIStatus("AI: processing failed")
                 }
             }
         }

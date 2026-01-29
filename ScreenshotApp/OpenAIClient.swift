@@ -10,12 +10,12 @@ enum OpenAIClientError: Error {
 
 struct OpenAIClient {
     private static let endpoint = URL(string: "https://api.openai.com/v1/images/edits")!
-    private static let model = "gpt-image-1-mini"
     private static let logFilename = "openai.log"
     private static let requestTimeout: TimeInterval = 120
 
-    static func editImage(apiKey: String, prompt: String, imageData: Data) async throws -> CGImage {
-        writeLog("request started (bytes=\(imageData.count))")
+    static func editImage(apiKey: String, model: String, prompt: String, imageData: Data) async throws -> CGImage {
+        let resolvedModel = model.isEmpty ? SettingsStore.defaultAIModel : model
+        writeLog("request started (model=\(resolvedModel) bytes=\(imageData.count))")
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -31,7 +31,7 @@ struct OpenAIClient {
 
         append("--\(boundary)\r\n")
         append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
-        append("\(model)\r\n")
+        append("\(resolvedModel)\r\n")
 
         append("--\(boundary)\r\n")
         append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n")
