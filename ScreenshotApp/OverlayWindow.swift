@@ -334,6 +334,14 @@ class SelectionView: NSView, NSTextFieldDelegate {
     var colorPickerView: NSView?
     var lineWidthPickerView: NSView?
     var fontPickerView: NSView?
+    var aiPromptView: NSVisualEffectView?
+    var aiPromptField: NSTextField?
+    var aiSendButton: ToolbarButton?
+    var aiSelectButton: ToolbarButton?
+    var aiEditRect: NSRect?
+    var aiEditStartPoint: NSPoint?
+    var aiEditCurrentPoint: NSPoint?
+    var aiIsSelectingEditRect: Bool = false
     var activeColorTarget: ColorTarget = .stroke
 
     private let toolButtonWidth: CGFloat = 28
@@ -342,6 +350,9 @@ class SelectionView: NSView, NSTextFieldDelegate {
     private let buttonSpacing: CGFloat = 8
     private let intraGroupSpacing: CGFloat = 0
     private let separatorWidth: CGFloat = 1
+    private let aiPromptHeight: CGFloat = 40
+    private let aiPromptMinWidth: CGFloat = 240
+    private let aiPromptMaxWidth: CGFloat = 520
     private let fontChoices: [(label: String, name: String)] = [
         ("System", NSFont.systemFont(ofSize: 16).fontName),
         ("Monospace", NSFont.monospacedSystemFont(ofSize: 16, weight: .regular).fontName),
@@ -417,6 +428,14 @@ class SelectionView: NSView, NSTextFieldDelegate {
             if mode == .drawing {
                 drawCurrentDrawing(in: context)
             }
+                if let aiRect = aiEditRect {
+                    drawAIEditRect(aiRect, in: context)
+                } else if aiIsSelectingEditRect,
+                          let start = aiEditStartPoint,
+                          let current = aiEditCurrentPoint {
+                    let aiRect = normalizedRect(from: start, to: current)
+                    drawAIEditRect(aiRect, in: context)
+                }
             
             // Draw control points
             if currentTool == .move {
@@ -434,11 +453,18 @@ class SelectionView: NSView, NSTextFieldDelegate {
         if let croppedImage = screenImage.cropping(to: imageRect) {
             context.draw(croppedImage, in: rect)
         }
-        
         // Draw selection border
         context.setStrokeColor(NSColor.systemBlue.cgColor)
         context.setLineWidth(1)
         context.stroke(rect)
+    }
+
+    private func drawAIEditRect(_ rect: NSRect, in context: CGContext) {
+        context.saveGState()
+        context.setStrokeColor(NSColor(calibratedWhite: 1.0, alpha: 0.10).cgColor)
+        context.setLineWidth(2)
+        context.stroke(rect)
+        context.restoreGState()
     }
 
     private func drawFullScreenImage(in context: CGContext) {
@@ -869,10 +895,6 @@ class SelectionView: NSView, NSTextFieldDelegate {
         
         button.accentColor = NSColor(calibratedRed: 0.20, green: 0.64, blue: 1.0, alpha: 1.0)
         button.isActiveAppearance = (tool == .none)
-        if tool == .ai {
-            button.isEnabled = false
-            button.alphaValue = 0.4
-        }
         
         return button
     }
@@ -1154,7 +1176,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
     override func mouseDown(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
 
-        let pickerViews: [NSView?] = [colorPickerView, lineWidthPickerView, fontPickerView]
+        let pickerViews: [NSView?] = [colorPickerView, lineWidthPickerView, fontPickerView, aiPromptView]
         if pickerViews.contains(where: { $0?.frame.contains(location) == true }) {
             return
         }
@@ -1172,6 +1194,15 @@ class SelectionView: NSView, NSTextFieldDelegate {
             } else {
                 return
             }
+        }
+
+        if currentTool == .ai, aiIsSelectingEditRect {
+            guard let baseRect = selectedRect, baseRect.contains(location) else { return }
+            aiEditStartPoint = clampedPoint(location, to: baseRect)
+            aiEditCurrentPoint = aiEditStartPoint
+            aiEditRect = nil
+            needsDisplay = true
+            return
         }
         
         // Check if clicking on control points for resizing
@@ -1249,6 +1280,8 @@ class SelectionView: NSView, NSTextFieldDelegate {
         activeTextField?.removeFromSuperview()
         activeTextField = nil
         activeTextOrigin = nil
+        aiEditRect = nil
+        aiIsSelectingEditRect = false
         
         clearToolbar()
         notifySelectionChanged()
@@ -1258,6 +1291,13 @@ class SelectionView: NSView, NSTextFieldDelegate {
     
     override func mouseDragged(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
+        if aiIsSelectingEditRect, let baseRect = selectedRect, let start = aiEditStartPoint {
+            let current = clampedPoint(location, to: baseRect)
+            aiEditCurrentPoint = current
+            aiEditRect = normalizedRect(from: start, to: current)
+            needsDisplay = true
+            return
+        }
         switch mode {
         case .selecting:
             currentPoint = clampedPoint(location)
@@ -1309,6 +1349,27 @@ class SelectionView: NSView, NSTextFieldDelegate {
     }
     
     override func mouseUp(with event: NSEvent) {
+        if aiIsSelectingEditRect {
+            defer {
+                aiIsSelectingEditRect = false
+                aiEditStartPoint = nil
+                aiEditCurrentPoint = nil
+                needsDisplay = true
+            }
+            guard let baseRect = selectedRect,
+                  let start = aiEditStartPoint,
+                  let current = aiEditCurrentPoint else {
+                aiEditRect = nil
+                return
+            }
+            let rect = normalizedRect(from: start, to: current).intersection(baseRect)
+            if rect.width > 6 && rect.height > 6 {
+                aiEditRect = rect
+            } else {
+                aiEditRect = nil
+            }
+            return
+        }
         switch mode {
         case .selecting:
             guard let start = startPoint, let current = currentPoint else { return }
@@ -1323,6 +1384,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
             
             if clampedRect.width > 10 && clampedRect.height > 10 {
                 selectedRect = clampedRect
+                aiEditRect = nil
                 mode = .selected
                 currentTool = .move
                 updateControlPoints()
@@ -1500,6 +1562,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         updateLineWidthPickerPosition()
         updateFontPickerPosition()
         updateFontButtonState()
+        updateAIPromptVisibility()
     }
 
     private func updateToolButtonStates() {
@@ -1514,6 +1577,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
             button.isActiveAppearance = true
         }
         updateFontButtonState()
+        updateAIPromptVisibility()
     }
 
     private func updateFontButtonState() {
@@ -1523,6 +1587,125 @@ class SelectionView: NSView, NSTextFieldDelegate {
         if !enabled {
             hideFontPicker()
         }
+    }
+
+    private func updateAIPromptVisibility() {
+        guard currentTool == .ai, selectedRect != nil else {
+            hideAIPrompt()
+            return
+        }
+        showAIPrompt()
+        updateAIPromptPosition()
+    }
+
+    private func showAIPrompt() {
+        if aiPromptView != nil { return }
+        let promptView = NSVisualEffectView()
+        promptView.material = .hudWindow
+        promptView.blendingMode = .withinWindow
+        promptView.state = .active
+        promptView.appearance = NSAppearance(named: .vibrantDark)
+        promptView.wantsLayer = true
+        promptView.layer?.cornerRadius = 8
+        promptView.layer?.borderWidth = 1
+        promptView.layer?.borderColor = NSColor(calibratedWhite: 1.0, alpha: 0.10).cgColor
+        promptView.layer?.shadowColor = NSColor.black.cgColor
+        promptView.layer?.shadowOpacity = 0.35
+        promptView.layer?.shadowRadius = 8
+        promptView.layer?.shadowOffset = CGSize(width: 0, height: -2)
+
+        let field = NSTextField(string: "")
+        field.placeholderString = ""
+        field.isBordered = false
+        field.drawsBackground = false
+        field.textColor = .white
+        field.font = NSFont.systemFont(ofSize: 16, weight: .medium)
+        field.focusRingType = .none
+        field.delegate = self
+        aiPromptField = field
+
+        let selectButton = createIconButton(icon: "rectangle.dashed", x: 0, y: 4)
+        selectButton.target = self
+        selectButton.action = #selector(reselectAIRegion)
+        selectButton.groupPosition = .single
+        aiSelectButton = selectButton
+
+        let sendButton = createIconButton(icon: "paperplane.fill", x: 0, y: 4)
+        sendButton.target = self
+        sendButton.action = #selector(sendAIPrompt)
+        sendButton.groupPosition = .single
+        aiSendButton = sendButton
+
+        promptView.addSubview(field)
+        promptView.addSubview(selectButton)
+        promptView.addSubview(sendButton)
+        aiPromptView = promptView
+        addSubview(promptView)
+    }
+
+    private func hideAIPrompt() {
+        aiPromptView?.removeFromSuperview()
+        aiPromptView = nil
+        aiPromptField = nil
+        aiSendButton = nil
+        aiSelectButton = nil
+    }
+
+    private func aiPromptWidth(for rect: NSRect) -> CGFloat {
+        let clamped = min(max(aiPromptMinWidth, rect.width), aiPromptMaxWidth)
+        return min(clamped, max(160, bounds.width - 8))
+    }
+
+    private func updateAIPromptPosition() {
+        guard let rect = selectedRect, let promptView = aiPromptView else { return }
+        let width = aiPromptWidth(for: rect)
+        let height = aiPromptHeight
+
+        var x = rect.midX - width / 2
+        x = min(max(4, x), bounds.maxX - width - 4)
+
+        var y = rect.maxY - 60
+        if y + height > bounds.maxY - 4 {
+            y = rect.maxY - height - 4
+        }
+        y = min(max(4, y), bounds.maxY - height - 4)
+
+        promptView.frame = NSRect(x: x, y: y, width: width, height: height)
+
+        let padding: CGFloat = 8
+        let buttonSpacing: CGFloat = 6
+        let buttonWidth: CGFloat = toolButtonWidth
+        let fieldWidth = max(80, width - padding * 2 - buttonWidth * 2 - buttonSpacing * 2)
+        let fieldHeight = min(24, height - 20)
+        let fieldY = (height - fieldHeight) / 2
+        let buttonsY = (height - 28) / 2
+        let selectX = padding + fieldWidth + buttonSpacing
+        aiPromptField?.frame = NSRect(x: padding, y: fieldY, width: fieldWidth, height: fieldHeight)
+        aiSelectButton?.frame = NSRect(x: selectX, y: buttonsY, width: buttonWidth, height: 28)
+        aiSendButton?.frame = NSRect(x: selectX + buttonWidth + buttonSpacing, y: buttonsY, width: buttonWidth, height: 28)
+    }
+
+    @objc private func sendAIPrompt() {
+        guard let field = aiPromptField else { return }
+        let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        field.stringValue = ""
+        showNotification(message: "AI prompt queued")
+    }
+
+    @objc private func reselectAIRegion() {
+        aiIsSelectingEditRect = true
+        aiEditRect = nil
+        aiEditStartPoint = nil
+        aiEditCurrentPoint = nil
+    }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if control === aiPromptField, commandSelector == #selector(insertNewline(_:)) {
+            sendAIPrompt()
+            return true
+        }
+        return false
     }
     
     override func keyDown(with event: NSEvent) {
@@ -1638,6 +1821,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         hideColorPicker()
         hideLineWidthPicker()
         hideFontPicker()
+        hideAIPrompt()
         toolbarView?.removeFromSuperview()
         toolbarView = nil
     }

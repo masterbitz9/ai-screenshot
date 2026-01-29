@@ -8,6 +8,8 @@ struct SettingsView: View {
     @State private var hotKeyOption: Bool = false
     @State private var hotKeyControl: Bool = false
     @State private var apiKey: String = ""
+    @State private var aiModeEnabled: Bool = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Form {
@@ -22,6 +24,10 @@ struct SettingsView: View {
             Section(header: Text("API Key")) {
                 TextField("", text: $apiKey, prompt: Text("sk-proj-..."))
                     .textFieldStyle(RoundedBorderTextFieldStyle())
+            }
+
+            Section(header: Text("AI Mode")) {
+                Toggle("Enable AI mode", isOn: $aiModeEnabled)
             }
 
             HStack {
@@ -118,6 +124,7 @@ struct SettingsView: View {
         hotKeyOption = defaults.bool(forKey: SettingsStore.Key.hotKeyOption)
         hotKeyControl = defaults.bool(forKey: SettingsStore.Key.hotKeyControl)
         apiKey = defaults.string(forKey: SettingsStore.Key.apiKey) ?? ""
+        aiModeEnabled = defaults.bool(forKey: SettingsStore.Key.aiModeEnabled)
     }
 
     private func hasChanges() -> Bool {
@@ -128,6 +135,7 @@ struct SettingsView: View {
         if defaults.bool(forKey: SettingsStore.Key.hotKeyOption) != hotKeyOption { return true }
         if defaults.bool(forKey: SettingsStore.Key.hotKeyControl) != hotKeyControl { return true }
         if (defaults.string(forKey: SettingsStore.Key.apiKey) ?? "") != apiKey { return true }
+        if defaults.bool(forKey: SettingsStore.Key.aiModeEnabled) != aiModeEnabled { return true }
         return false
     }
 
@@ -139,8 +147,10 @@ struct SettingsView: View {
         defaults.set(hotKeyOption, forKey: SettingsStore.Key.hotKeyOption)
         defaults.set(hotKeyControl, forKey: SettingsStore.Key.hotKeyControl)
         defaults.set(apiKey, forKey: SettingsStore.Key.apiKey)
+        defaults.set(aiModeEnabled, forKey: SettingsStore.Key.aiModeEnabled)
         NotificationCenter.default.post(name: .hotkeyPreferencesDidChange, object: nil)
         loadFromDefaults()
+        dismiss()
     }
 }
 
