@@ -957,6 +957,11 @@ class SelectionView: NSView, NSTextFieldDelegate {
             if currentTool == DrawingTool.eraser, nextTool != .eraser {
                 hoverEraserIndex = nil
             }
+            if currentTool == .ai, nextTool != .ai {
+                aiEditRect = nil
+                aiIsSelectingEditRect = false
+                aiSelectButton?.isActiveAppearance = false
+            }
             currentTool = nextTool
             
             // Update button states
@@ -1609,7 +1614,11 @@ class SelectionView: NSView, NSTextFieldDelegate {
             return
         }
         showAIPrompt()
+        let devMode = SettingsStore.devModeEnabled
         aiSelectButton?.isActiveAppearance = aiIsSelectingEditRect
+        aiSelectButton?.isHidden = false
+        aiLogButton?.isHidden = !devMode
+        aiStatusLabel?.isHidden = !devMode || (aiStatusLabel?.stringValue.isEmpty ?? true)
         updateAIPromptPosition()
     }
 
@@ -1741,7 +1750,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         var x = rect.midX - width / 2
         x = min(max(4, x), bounds.maxX - width - 4)
 
-        var y = rect.maxY - 60
+        var y = rect.maxY - 70
         if y + height > bounds.maxY - 4 {
             y = rect.maxY - height - 4
         }
@@ -1750,16 +1759,20 @@ class SelectionView: NSView, NSTextFieldDelegate {
         promptView.frame = NSRect(x: x, y: y, width: width, height: height)
 
         let padding: CGFloat = 8
+        let devMode = SettingsStore.devModeEnabled
         let buttonSpacing: CGFloat = 6
         let buttonWidth: CGFloat = toolButtonWidth
-        let fieldWidth = max(80, width - padding * 2 - buttonWidth * 3 - buttonSpacing * 3)
+        let buttonCount = devMode ? 3 : 2
+        let spacingCount = max(0, buttonCount - 1)
+        let fieldWidth = max(80, width - padding * 2 - buttonWidth * CGFloat(buttonCount) - buttonSpacing * CGFloat(spacingCount))
         let fieldHeight = min(24, height - 24)
         let fieldY = height - fieldHeight - 8
         let buttonsY = height - 28 - 6
         let selectX = padding + fieldWidth + buttonSpacing
         aiPromptField?.frame = NSRect(x: padding, y: fieldY, width: fieldWidth, height: fieldHeight)
         aiSelectButton?.frame = NSRect(x: selectX, y: buttonsY, width: buttonWidth, height: 28)
-        let sendFrame = NSRect(x: selectX + buttonWidth + buttonSpacing, y: buttonsY, width: buttonWidth, height: 28)
+        let sendX = selectX + buttonWidth + buttonSpacing
+        let sendFrame = NSRect(x: sendX, y: buttonsY, width: buttonWidth, height: 28)
         aiSendButton?.frame = sendFrame
         aiLogButton?.frame = NSRect(x: sendFrame.maxX + buttonSpacing, y: buttonsY, width: buttonWidth, height: 28)
         aiSendSpinner?.frame = NSRect(
@@ -1805,6 +1818,9 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 await MainActor.run {
                     self?.aiResultImage = resultImage
                     self?.aiIsSendingPrompt = false
+                    self?.aiEditRect = nil
+                    self?.aiIsSelectingEditRect = false
+                    self?.aiSelectButton?.isActiveAppearance = false
                     self?.updateSendState()
                     self?.updateAIStatus("AI: done")
                     self?.needsDisplay = true
@@ -1853,6 +1869,11 @@ class SelectionView: NSView, NSTextFieldDelegate {
 
     private func updateAIStatus(_ text: String?) {
         guard let label = aiStatusLabel else { return }
+        if !SettingsStore.devModeEnabled {
+            label.isHidden = true
+            label.stringValue = ""
+            return
+        }
         if let text, !text.isEmpty {
             label.stringValue = text
             label.isHidden = false
@@ -1943,6 +1964,12 @@ class SelectionView: NSView, NSTextFieldDelegate {
 
     override func mouseMoved(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
+        let pickerViews: [NSView?] = [colorPickerView, lineWidthPickerView, fontPickerView, aiPromptView]
+        if pickerViews.contains(where: { $0?.frame.contains(location) == true }) {
+            NSCursor.arrow.set()
+            super.mouseMoved(with: event)
+            return
+        }
         if let toolbar = toolbarView, toolbar.frame.contains(location) {
             NSCursor.arrow.set()
             super.mouseMoved(with: event)
@@ -2093,9 +2120,13 @@ class SelectionView: NSView, NSTextFieldDelegate {
         image.lockFocus()
         NSColor.clear.set()
         NSRect(origin: .zero, size: size).fill()
-        let symbol = NSImage(systemSymbolName: "eyedropper", accessibilityDescription: nil)
-        symbol?.size = size
-        symbol?.draw(in: NSRect(origin: .zero, size: size))
+        if let symbol = NSImage(systemSymbolName: "eyedropper", accessibilityDescription: nil) {
+            symbol.isTemplate = true
+            NSColor.white.set()
+            symbol.draw(in: NSRect(origin: .zero, size: size))
+            NSColor.black.withAlphaComponent(0.9).set()
+            symbol.draw(in: NSRect(x: 2, y: 2, width: size.width - 4, height: size.height - 4))
+        }
         image.unlockFocus()
         return NSCursor(image: image, hotSpot: NSPoint(x: 2, y: 2))
     }

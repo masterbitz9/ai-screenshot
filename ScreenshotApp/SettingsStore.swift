@@ -14,7 +14,7 @@ enum SettingsStore {
         static let hotKeyControl = "hotkey.modifier.control"
         static let saveDirectoryPath = "save.directory.path"
         static let apiKey = "ai.api.key"
-        static let aiModeEnabled = "ai.mode.enabled"
+        static let devModeEnabled = "ai.dev.mode.enabled"
     }
 
     static func registerDefaults() {
@@ -24,7 +24,7 @@ enum SettingsStore {
             Key.hotKeyShift: true,
             Key.hotKeyOption: false,
             Key.hotKeyControl: false,
-            Key.aiModeEnabled: false
+            Key.devModeEnabled: false
         ])
     }
 
@@ -49,5 +49,9 @@ enum SettingsStore {
 
     static var apiKeyValue: String {
         UserDefaults.standard.string(forKey: Key.apiKey) ?? ""
+    }
+
+    static var devModeEnabled: Bool {
+        UserDefaults.standard.bool(forKey: Key.devModeEnabled)
     }
 }

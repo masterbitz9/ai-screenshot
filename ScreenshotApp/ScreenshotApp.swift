@@ -94,14 +94,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         let screenshotItem = NSMenuItem(title: "Take Screenshot...", action: #selector(takeScreenshot), keyEquivalent: "0")
         screenshotItem.keyEquivalentModifierMask = [.command, .shift]
-        screenshotItem.image = NSImage(systemSymbolName: "camera", accessibilityDescription: nil)
         menu.addItem(screenshotItem)
 
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: "")
-        settingsItem.image = nil
-        settingsItem.onStateImage = nil
-        settingsItem.offStateImage = nil
-        settingsItem.mixedStateImage = nil
         menu.addItem(settingsItem)
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: ""))
         
