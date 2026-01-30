@@ -1,0 +1,64 @@
+### macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+### Xcode
+build/
+DerivedData/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+*.xcscheme
+!default.xcscheme
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata/
+*.log
+
+### Swift Package Manager
+.build/
+.swiftpm/
+.swiftpm/xcode/
+Package.resolved
+
+### Carthage
+Carthage/Build/
+
+### CocoaPods
+Pods/
+Podfile.lock
+
+### Accio dependency manager
+Dependencies/
+.accio/
+
+### fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+### Instruments
+*.trace
+
+### Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+### SwiftLint
+.swiftlint_cache/
