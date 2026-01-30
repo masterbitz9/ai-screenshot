@@ -35,12 +35,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		365475972F2D2C2200DB6A49 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		3689D2DC2F295B1700674B9E = {
 			isa = PBXGroup;
 			children = (
 				3689D2E72F295B1700674B9E /* AiShot */,
 				3689D3012F295D0000674B9E /* Frameworks */,
 				3689D2E62F295B1700674B9E /* Products */,
+				365475972F2D2C2200DB6A49 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};

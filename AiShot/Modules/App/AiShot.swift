@@ -17,6 +17,7 @@ struct AiShot: App {
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem?
     var screenshotManager: ScreenshotManager?
+    var updateManager: UpdateManager?
     private var hotKeyRef: EventHotKeyRef?
     private var hotKeyHandler: EventHandlerRef?
     
@@ -39,6 +40,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Initialize screenshot manager
         screenshotManager = ScreenshotManager()
+        updateManager = UpdateManager(owner: "Icebitz", repo: "ai-screenshot")
+        updateManager?.start()
         registerGlobalHotKey()
 
         NotificationCenter.default.addObserver(
@@ -62,6 +65,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         ProcessInfo.processInfo.enableAutomaticTermination("Keep menu bar app alive")
         unregisterGlobalHotKey()
+        updateManager?.stop()
     }
     
     func requestScreenRecordingPermission() {
@@ -108,7 +112,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         screenshotItem.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(screenshotItem)
 
-        let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: "")
+        let settingsItem = NSMenuItem(title: "Preferences", action: #selector(openSettings), keyEquivalent: "")
         menu.addItem(settingsItem)
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: ""))
         
