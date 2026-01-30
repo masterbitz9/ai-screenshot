@@ -171,11 +171,13 @@ AiShot/
 
 ## Future Enhancements
 
-- Better AI mask controls
-- More AI models and presets
-- Privacy tools (blur/pixelate)
-- Manual editing tools
-- Share to cloud
+- Better AI mask controls to refine edit regions with less manual cleanup.
+- More AI models and presets to match different creative styles and use cases.
+- Privacy tools (blur/pixelate) to quickly redact sensitive content.
+- Manual editing tools to complement AI edits with precise touchups.
+- Share to cloud to generate links and sync across devices.
+- Capture history to browse, reuse, and manage past screenshots.
+- Premium plan with extra AI credits and cloud history for power users.
 
 ## License
 
