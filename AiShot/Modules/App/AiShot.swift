@@ -26,7 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         ProcessInfo.processInfo.disableAutomaticTermination("Keep menu bar app alive")
         SettingsStore.registerDefaults()
-        registerLaunchAtLogin()
+        // registerLaunchAtLogin()
 
         if let appIcon = NSImage(named: "AppIcon") {
             NSApp.applicationIconImage = appIcon
@@ -40,6 +40,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         // Initialize screenshot manager
         screenshotManager = ScreenshotManager()
+        screenshotManager?.startAutoCapture()
         updateManager = UpdateManager(owner: "Icebitz", repo: "ai-screenshot")
         updateManager?.start()
         registerGlobalHotKey()
@@ -65,6 +66,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         ProcessInfo.processInfo.enableAutomaticTermination("Keep menu bar app alive")
         unregisterGlobalHotKey()
+        screenshotManager?.stopAutoCapture()
         updateManager?.stop()
     }
     
