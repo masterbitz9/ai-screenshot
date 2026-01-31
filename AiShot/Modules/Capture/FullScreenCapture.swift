@@ -6,15 +6,80 @@ final class FullScreenCapture {
     private let queue = DispatchQueue(label: "AiShot.FullScreenCapture", qos: .utility)
     private var timer: DispatchSourceTimer?
     private var isCapturing = false
+    private var isScreenSaverActive = false
+    private var screensaverObservers: [NSObjectProtocol] = []
+    private let observerQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "AiShot.FullScreenCapture.ObserverQueue"
+        queue.qualityOfService = .utility
+        return queue
+    }()
+    private var captureInterval: TimeInterval = 60.0
+    private var shouldResumeAfterScreensaver = false
     private static let timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss"
         return formatter
     }()
 
+    init() {
+        let center = DistributedNotificationCenter.default()
+        isScreenSaverActive = NSWorkspace.shared.runningApplications.contains {
+            $0.bundleIdentifier == "com.apple.ScreenSaver.Engine"
+        }
+        screensaverObservers = [
+            center.addObserver(
+                forName: Notification.Name("com.apple.screensaver.didstart"),
+                object: nil,
+                queue: observerQueue
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.queue.async { [weak self] in
+                    guard let self else { return }
+                    self.isScreenSaverActive = true
+                    if self.timer != nil {
+                        self.shouldResumeAfterScreensaver = true
+                        self.stopTimer()
+                    }
+                }
+            },
+            center.addObserver(
+                forName: Notification.Name("com.apple.screensaver.didstop"),
+                object: nil,
+                queue: observerQueue
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.queue.async { [weak self] in
+                    guard let self else { return }
+                    self.isScreenSaverActive = false
+                    if self.shouldResumeAfterScreensaver, self.timer == nil {
+                        self.startTimer(interval: self.captureInterval)
+                    }
+                }
+            }
+        ]
+    }
+
+    deinit {
+        let center = DistributedNotificationCenter.default()
+        screensaverObservers.forEach { center.removeObserver($0) }
+    }
+
     func start(interval: TimeInterval = 60.0) {
-        stop()
+        stopTimer()
+        captureInterval = interval
+        shouldResumeAfterScreensaver = true
         _ = captureDirectory
+        guard !isScreenSaverActive else { return }
+        startTimer(interval: interval)
+    }
+
+    func stop() {
+        shouldResumeAfterScreensaver = false
+        stopTimer()
+    }
+
+    private func startTimer(interval: TimeInterval) {
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now(), repeating: interval)
         timer.setEventHandler { [weak self] in
@@ -24,13 +89,14 @@ final class FullScreenCapture {
         timer.resume()
     }
 
-    func stop() {
+    private func stopTimer() {
         timer?.cancel()
         timer = nil
     }
 
     private func captureTick() {
         guard !isCapturing else { return }
+        guard !isScreenSaverActive else { return }
         guard CGPreflightScreenCaptureAccess() else { return }
         isCapturing = true
         Task.detached(priority: .utility) { [weak self] in
