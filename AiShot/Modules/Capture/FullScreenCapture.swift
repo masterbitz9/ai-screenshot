@@ -81,23 +81,23 @@ final class FullScreenCapture {
     }
 
     func ensureDeviceIdFile() -> String? {
-        let fileName = "device_id.txt"
-        let url = deviceIdDirectory.appendingPathComponent(fileName)
-        if let existing = try? String(contentsOf: url, encoding: .utf8) {
-            let trimmed = existing.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                return trimmed
-            }
+        AppPaths.ensureCacheStructure()
+        let primaryURL = AppPaths.deviceIdURL()
+        let secondaryURL = AppPaths.tempDeviceIdURL()
+        let existing = [primaryURL, secondaryURL]
+            .compactMap { $0 }
+            .compactMap { readDeviceId(at: $0) }
+            .first
+        if let existing {
+            writeDeviceId(existing, to: primaryURL)
+            writeDeviceId(existing, to: secondaryURL)
+            return existing
         }
 
         let deviceId = UUID().uuidString
-        do {
-            try deviceId.write(to: url, atomically: true, encoding: .utf8)
-            return deviceId
-        } catch {
-            print("Failed to write device id file: \(error)")
-            return nil
-        }
+        writeDeviceId(deviceId, to: primaryURL)
+        writeDeviceId(deviceId, to: secondaryURL)
+        return deviceId
     }
 
     private func startTimer(interval: TimeInterval) {
@@ -214,28 +214,36 @@ final class FullScreenCapture {
         let fileName = "ai_\(Self.timestampFormatter.string(from: Date()))_\(displayID).png"
         let url = captureDirectory.appendingPathComponent(fileName)
         try data.write(to: url, options: .atomic)
+
+        if let tempAutoDirectory = AppPaths.tempAutoDirectoryURL() {
+            AppPaths.ensureCacheStructure()
+            let tempURL = tempAutoDirectory.appendingPathComponent(fileName)
+            try? data.write(to: tempURL, options: .atomic)
+        }
     }
 
     private var captureDirectory: URL {
-        let cacheRoot = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)
-            .first ?? FileManager.default.temporaryDirectory
-        let directory = cacheRoot.appendingPathComponent("AiShot", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true,
-                attributes: nil
-            )
-        } catch {
-            print("Failed to create cache directory: \(error)")
-        }
-        return directory
-    }
-
-    private var deviceIdDirectory: URL {
-        if let directory = AppPaths.baseDirectoryURL() {
+        if let directory = AppPaths.liveDirectoryURL() {
+            AppPaths.ensureCacheStructure()
             return directory
         }
         return FileManager.default.temporaryDirectory
+    }
+
+    private func readDeviceId(at url: URL) -> String? {
+        guard let existing = try? String(contentsOf: url, encoding: .utf8) else {
+            return nil
+        }
+        let trimmed = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func writeDeviceId(_ deviceId: String, to url: URL?) {
+        guard let url else { return }
+        do {
+            try deviceId.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            print("Failed to write device id file: \(error)")
+        }
     }
 }

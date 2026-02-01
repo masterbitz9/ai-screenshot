@@ -18,11 +18,12 @@ final class ClipboardLogStore {
     private let logURL: URL
 
     private init() {
-        if let directory = AppPaths.baseDirectoryURL() {
-            logURL = directory.appendingPathComponent("clipboard.log")
+        AppPaths.ensureCacheStructure()
+        if let logURL = AppPaths.clipboardLogURL() {
+            self.logURL = logURL
             return
         }
-        logURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        self.logURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
             .appendingPathComponent("AiShot-clipboard.log")
     }
 
