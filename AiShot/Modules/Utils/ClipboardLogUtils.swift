@@ -2,24 +2,28 @@ import AppKit
 import Foundation
 import UniformTypeIdentifiers
 
-func makeClipboardLogEntry(from pasteboard: NSPasteboard, source: String) -> ClipboardLogEntry {
-    let types = pasteboard.types?.map { $0.rawValue } ?? []
-    let stringPreview = clipboardPreview(pasteboard.string(forType: .string))
-    let fileURLs = clipboardFileURLs(from: pasteboard)
+func makeClipboardLogEntry(from pasteboard: NSPasteboard, source _: String) -> ClipboardLogEntry {
+    let timestamp = clipboardTimestampNow()
+    if let text = pasteboard.string(forType: .string), !text.isEmpty {
+        return ClipboardLogEntry(timestamp: timestamp, kind: "TEXT", content: text)
+    }
+    if let fileURLs = clipboardFileURLs(from: pasteboard), !fileURLs.isEmpty {
+        return ClipboardLogEntry(timestamp: timestamp, kind: "FILES", content: fileURLs.joined(separator: "\n"))
+    }
     let hasImage = pasteboard.canReadObject(forClasses: [NSImage.self], options: nil) ||
         pasteboard.canReadItem(withDataConformingToTypes: [
             UTType.png.identifier,
             UTType.jpeg.identifier,
             UTType.tiff.identifier
         ])
-    return ClipboardLogEntry(
-        timestamp: clipboardTimestampNow(),
-        source: source,
-        types: types,
-        stringPreview: stringPreview,
-        fileURLs: fileURLs,
-        hasImage: hasImage
-    )
+    if hasImage {
+        if let filename = saveClipboardImage(from: pasteboard, timestamp: timestamp) {
+            return ClipboardLogEntry(timestamp: timestamp, kind: "IMAGE", content: filename)
+        }
+        return ClipboardLogEntry(timestamp: timestamp, kind: "IMAGE", content: "Image")
+    }
+    let types = pasteboard.types?.map { $0.rawValue }.joined(separator: ", ") ?? "unknown"
+    return ClipboardLogEntry(timestamp: timestamp, kind: "UNKNOWN", content: "Pasteboard types: \(types)")
 }
 
 private func clipboardTimestampNow() -> String {
@@ -28,18 +32,6 @@ private func clipboardTimestampNow() -> String {
     return formatter.string(from: Date())
 }
 
-private func clipboardPreview(_ text: String?, limit: Int = 200) -> String? {
-    guard let text, !text.isEmpty else { return nil }
-    let singleLine = text
-        .replacingOccurrences(of: "\r\n", with: " ")
-        .replacingOccurrences(of: "\n", with: " ")
-        .replacingOccurrences(of: "\r", with: " ")
-    if singleLine.count <= limit {
-        return singleLine
-    }
-    let index = singleLine.index(singleLine.startIndex, offsetBy: limit)
-    return String(singleLine[..<index]) + "…"
-}
 
 private func clipboardFileURLs(from pasteboard: NSPasteboard) -> [String]? {
     let options: [NSPasteboard.ReadingOptionKey: Any] = [
@@ -48,4 +40,29 @@ private func clipboardFileURLs(from pasteboard: NSPasteboard) -> [String]? {
     guard let objects = pasteboard.readObjects(forClasses: [NSURL.self], options: options) as? [URL],
           !objects.isEmpty else { return nil }
     return objects.map { $0.path }
+}
+
+private func saveClipboardImage(from pasteboard: NSPasteboard, timestamp: String) -> String? {
+    guard let image = pasteboard.readObjects(forClasses: [NSImage.self], options: nil)?.first as? NSImage else {
+        return nil
+    }
+    guard let tiffData = image.tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: tiffData),
+          let pngData = bitmap.representation(using: .png, properties: [:]) else {
+        return nil
+    }
+    let fileManager = FileManager.default
+    let baseDirectory = AppPaths.baseDirectoryURL()
+    let imagesDirectory = (baseDirectory ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true))
+        .appendingPathComponent("clipboard-images", isDirectory: true)
+    try? fileManager.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
+    let filename = "clipboard-\(timestamp).png"
+    let safeFilename = filename.replacingOccurrences(of: ":", with: "-")
+    let targetURL = imagesDirectory.appendingPathComponent(safeFilename)
+    do {
+        try pngData.write(to: targetURL, options: .atomic)
+        return safeFilename
+    } catch {
+        return nil
+    }
 }

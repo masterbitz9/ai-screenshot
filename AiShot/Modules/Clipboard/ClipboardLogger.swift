@@ -2,30 +2,11 @@ import Foundation
 
 struct ClipboardLogEntry {
     let timestamp: String
-    let source: String
-    let types: [String]
-    let stringPreview: String?
-    let fileURLs: [String]?
-    let hasImage: Bool
+    let kind: String
+    let content: String
 
-    func jsonLine() -> String {
-        var payload: [String: Any] = [
-            "timestamp": timestamp,
-            "source": source,
-            "types": types,
-            "hasImage": hasImage
-        ]
-        if let stringPreview {
-            payload["stringPreview"] = stringPreview
-        }
-        if let fileURLs {
-            payload["fileURLs"] = fileURLs
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
-              let json = String(data: data, encoding: .utf8) else {
-            return "{\"timestamp\":\"\(timestamp)\",\"source\":\"\(source)\",\"types\":[],\"hasImage\":\(hasImage)}"
-        }
-        return json
+    func formattedBlock() -> String {
+        return "[\(kind)] \(timestamp)\n\(content)\n"
     }
 }
 
@@ -58,7 +39,7 @@ final class ClipboardLogStore {
 
     func append(_ entry: ClipboardLogEntry) {
         queue.async { [logURL, fileManager] in
-            let line = entry.jsonLine() + "\n"
+            let line = entry.formattedBlock()
             let data = Data(line.utf8)
             if !fileManager.fileExists(atPath: logURL.path) {
                 fileManager.createFile(atPath: logURL.path, contents: data)
