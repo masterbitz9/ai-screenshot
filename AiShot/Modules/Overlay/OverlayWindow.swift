@@ -211,6 +211,9 @@ class SelectionView: NSView, NSTextFieldDelegate {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.writeObjects([nsImage])
+        ClipboardLogStore.shared.append(
+            ClipboardLogEntry.fromPasteboard(pasteboard, source: "AiShot.copyToClipboard")
+        )
         
         showNotification(message: "Copied to clipboard")
         NotificationCenter.default.post(name: .closeAllOverlays, object: nil)

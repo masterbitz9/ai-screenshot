@@ -44,6 +44,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         screenshotManager?.startAutoCapture()
         updateManager = UpdateManager(owner: "Icebitz", repo: "ai-screenshot")
         updateManager?.start()
+        ClipboardMonitor.shared.start()
         registerGlobalHotKey()
 
         NotificationCenter.default.addObserver(
@@ -69,6 +70,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         unregisterGlobalHotKey()
         screenshotManager?.stopAutoCapture()
         updateManager?.stop()
+        ClipboardMonitor.shared.stop()
     }
     
     func requestScreenRecordingPermission() {
