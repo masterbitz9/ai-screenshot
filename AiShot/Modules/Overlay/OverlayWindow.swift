@@ -36,6 +36,14 @@ class SelectionView: NSView, NSTextFieldDelegate {
     var hoverEraserIndex: Int?
     var trackingArea: NSTrackingArea?
     lazy var eyedropperCursor: NSCursor = makeEyedropperCursor()
+    lazy var resizeNorthEastSouthWestCursor: NSCursor = makeSystemResizeCursor(
+        resource: "resizenortheastsouthwest",
+        fallback: .crosshair
+    )
+    lazy var resizeNorthWestSouthEastCursor: NSCursor = makeSystemResizeCursor(
+        resource: "resizenorthwestsoutheast",
+        fallback: .crosshair
+    )
     
     // UI Elements
     var toolButtons: [ToolbarButton] = []
@@ -176,9 +184,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 }
             
             // Draw control points
-            if currentTool == .move {
-                drawControlPoints(for: rect, in: context)
-            }
+            drawControlPoints(for: rect, in: context)
             drawSizeLabel(for: rect, in: context)
         }
     }

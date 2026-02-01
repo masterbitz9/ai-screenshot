@@ -76,7 +76,7 @@ extension SelectionView {
         }
         
         // Check if clicking on control points for resizing
-        if currentTool == .move, let _ = selectedRect {
+        if let _ = selectedRect {
             for (index, controlPoint) in controlPoints.enumerated() {
                 if controlPoint.contains(location) {
                     mode = .resizing
@@ -132,7 +132,7 @@ extension SelectionView {
                 drawingStartPoint = location
                 currentDrawingPoints = [location]
             } else if currentTool == .move {
-                // Start dragging
+                // Start dragging only in move mode.
                 selectedElementIndex = nil
                 mode = .dragging
                 dragOffset = NSPoint(x: location.x - rect.origin.x, y: location.y - rect.origin.y)

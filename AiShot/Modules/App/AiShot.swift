@@ -26,7 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         ProcessInfo.processInfo.disableAutomaticTermination("Keep menu bar app alive")
         SettingsStore.registerDefaults()
-        registerLaunchAtLogin()
+        // registerLaunchAtLogin()
 
         if let appIcon = NSImage(named: "AppIcon") {
             NSApp.applicationIconImage = appIcon
