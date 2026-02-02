@@ -14,7 +14,8 @@ extension SelectionView {
                 addCursorRect(rect, cursor: .openHand)
             }
         }
-        for (index, rect) in controlPoints.enumerated() {
+        let pointsToUse = activeTextField != nil ? textControlPoints : controlPoints
+        for (index, rect) in pointsToUse.enumerated() {
             let cursor: NSCursor
             switch index {
             case 0, 3:
