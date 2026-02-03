@@ -274,35 +274,68 @@ class SelectionView: NSView, NSTextFieldDelegate {
     @objc func saveImage() {
         guard let rect = selectedRect else { return }
         let finalImage = aiResultImage ?? renderFinalImage(for: rect)
-        let fileManager = FileManager.default
-        let cacheDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
-        let bundleId = Bundle.main.bundleIdentifier ?? "AiShot"
-        let targetDirectory = cacheDirectory?.appendingPathComponent(bundleId, isDirectory: true)
-        if let targetDirectory {
-            do {
-                try fileManager.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
-            } catch {
-                showNotification(message: "Save failed")
-                NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
-                return
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+
+            // If you're a menu-bar/agent app, temporarily become a normal app
+            let previousPolicy = NSApp.activationPolicy()
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.png]
+            panel.canCreateDirectories = true
+            panel.isExtensionHidden = false
+            panel.nameFieldStringValue = "Screenshot-\(Int(Date().timeIntervalSince1970)).png"
+            if let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first {
+                panel.directoryURL = pictures
+            }
+
+            let restorePolicy: () -> Void = {
+                // Put it back if you want to remain a menu-bar style app
+                NSApp.setActivationPolicy(previousPolicy)
+            }
+
+            // Prefer a sheet if you have a window; otherwise use begin()
+            if let window = NSApp.keyWindow ?? NSApp.windows.first {
+                panel.beginSheetModal(for: window) { result in
+                    defer { restorePolicy() }
+
+                    if result == .OK, let targetURL = panel.url {
+                        self.writePNG(finalImage, to: targetURL)
+                        NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
+                    }
+                }
+            } else {
+                panel.begin { result in
+                    defer { restorePolicy() }
+
+                    if result == .OK, let targetURL = panel.url {
+                        self.writePNG(finalImage, to: targetURL)
+                        NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
+                    }
+                }
             }
         }
-        let filename = "Screenshot-\(Int(Date().timeIntervalSince1970)).png"
-        let fallbackDirectory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        let targetURL = (targetDirectory ?? cacheDirectory ?? fallbackDirectory).appendingPathComponent(filename)
+    }
 
-        if let destination = CGImageDestinationCreateWithURL(targetURL as CFURL, UTType.png.identifier as CFString, 1, nil) {
-            CGImageDestinationAddImage(destination, finalImage, nil)
+    private func writePNG(_ image: CGImage, to url: URL) {
+        if let destination = CGImageDestinationCreateWithURL(url as CFURL,
+                                                            UTType.png.identifier as CFString,
+                                                            1,
+                                                            nil) {
+            CGImageDestinationAddImage(destination, image, nil)
             if CGImageDestinationFinalize(destination) {
-                showNotification(message: "Saved to cache")
+                showNotification(message: "Saved image")
             } else {
                 showNotification(message: "Save failed")
             }
         } else {
             showNotification(message: "Save failed")
         }
-        NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
     }
+
     
     @objc func closeOverlay() {
         NotificationCenter.default.post(name: .closeAllOverlays, object: nil)

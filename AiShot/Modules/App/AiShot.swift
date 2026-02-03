@@ -2,6 +2,7 @@ import SwiftUI
 import ScreenCaptureKit
 import Carbon
 import ServiceManagement
+import AppKit
 
 @main
 struct AiShot: App {
