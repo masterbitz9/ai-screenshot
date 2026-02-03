@@ -245,6 +245,10 @@ extension SelectionView {
             needsDisplay = true
             return
         }
+        if currentTool == .eraser, let rect = selectedRect, rect.contains(location) {
+            eraseElement(at: location)
+            return
+        }
         // Handle text area drag to define
         if textAreaDragStart != nil {
             let start = textAreaDragStart!
