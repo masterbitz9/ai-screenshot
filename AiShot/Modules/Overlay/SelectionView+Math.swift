@@ -88,6 +88,17 @@ extension SelectionView {
         return abs(normalized - 1) <= (tolerance / max(rx, ry))
     }
 
+    func ellipseContainsPoint(_ rect: NSRect, point: NSPoint) -> Bool {
+        let center = NSPoint(x: rect.midX, y: rect.midY)
+        let rx = rect.width / 2
+        let ry = rect.height / 2
+        guard rx > 0, ry > 0 else { return false }
+        let dx = point.x - center.x
+        let dy = point.y - center.y
+        let normalized = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry)
+        return normalized <= 1
+    }
+
     func distanceToSegment(_ p: NSPoint, _ a: NSPoint, _ b: NSPoint) -> CGFloat {
         let abx = b.x - a.x
         let aby = b.y - a.y

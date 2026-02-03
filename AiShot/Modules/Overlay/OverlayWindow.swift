@@ -659,8 +659,14 @@ class SelectionView: NSView, NSTextFieldDelegate {
              .arrow(let start, let end):
             return distanceToSegment(point, start, end) <= tolerance
         case .rectangle(let rect):
+            if element.fillColor != nil, rect.contains(point) {
+                return true
+            }
             return rectEdgeHitTest(rect, point: point, tolerance: tolerance)
         case .ellipse(let rect):
+            if element.fillColor != nil, ellipseContainsPoint(rect, point: point) {
+                return true
+            }
             return ellipseEdgeHitTest(rect, point: point, tolerance: tolerance)
         case .text(_, let textRect):
             return textRect.insetBy(dx: -tolerance, dy: -tolerance).contains(point)
