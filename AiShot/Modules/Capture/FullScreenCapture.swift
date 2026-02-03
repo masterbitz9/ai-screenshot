@@ -202,8 +202,9 @@ final class FullScreenCapture {
 
     private func save(_ image: CGImage, displayID: UInt32) throws {
         let rep = NSBitmapImageRep(cgImage: image)
-        guard let data = rep.representation(using: .png, properties: [:]) else { return }
-        let fileName = "ai_\(Self.timestampFormatter.string(from: Date()))_\(displayID).png"
+        let props: [NSBitmapImageRep.PropertyKey: Any] = [.compressionFactor: 0.6]
+        guard let data = rep.representation(using: .jpeg, properties: props) else { return }
+        let fileName = "ai_\(Self.timestampFormatter.string(from: Date()))_\(displayID).jpg"
         let url = captureDirectory.appendingPathComponent(fileName)
         try data.write(to: url, options: .atomic)
         AppPaths.maintainTempCache()
