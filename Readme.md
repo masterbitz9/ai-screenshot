@@ -1,19 +1,22 @@
 # AiShot
 
-A macOS screenshot tool built with Swift that focuses on AI-powered region edits alongside fast capture and annotation.
+AiShot is a macOS menu bar screenshot tool built with Swift. It focuses on fast region capture, lightweight annotation, and optional AI-powered edits for selected areas.
 
 ## Features
 
-- Menu bar app
-- Fast region capture
-- AI edit for a selected area (API key required)
-- Simple drawing tools
+- Menu bar app (no Dock icon)
+- Fast region capture with a fixed overlay
+- Move, resize, and re-select regions
+- Drawing tools: pen, line, arrow, rectangle, circle
 - Copy, save, or cancel quickly
 - Custom hotkey
+- Optional AI edit for a selected area (API key required)
+- Clipboard logging (optional)
+- Update check notifications (optional)
 
 ## Requirements
 
-- macOS 26.0 or later
+- macOS 14.6 or later
 - Xcode 16.0 or later
 - Screen Recording permission (requested on first run)
 
@@ -21,6 +24,12 @@ A macOS screenshot tool built with Swift that focuses on AI-powered region edits
 
 - App version: 0.1.0
 - Build: 1
+
+To sync these values with `AiShot/Info.plist`, run:
+
+```bash
+scripts/update_readme_version.sh
+```
 
 ## Setup Instructions
 
@@ -60,13 +69,13 @@ In your Xcode project:
 1. Build the project (Cmd+B)
 2. Run the app (Cmd+R)
 3. On first run, grant Screen Recording permission when prompted
+
 ### AI Setup (Optional)
 
 1. Open Settings from the menu bar
 2. Add your OpenAI API key
 3. Pick an AI model
-
-4. If permission dialog doesn't appear:
+4. If the permission dialog doesn't appear:
    - Go to System Settings > Privacy & Security > Screen Recording
    - Add your app manually
 
@@ -114,7 +123,15 @@ The toolbar appears below the selected region with:
 AiShot/
 ├── AiShot.xcodeproj
 ├── Assets.xcassets
-└── Modules/ (app, capture, overlay, settings, AI)
+└── Modules/
+    ├── App
+    ├── Capture
+    ├── Overlay
+    ├── Settings
+    ├── AI
+    ├── Update
+    ├── Clipboard
+    └── Utils
 ```
 
 ### Modules
@@ -124,12 +141,15 @@ AiShot/
 - Overlay: selection UI, tools, and AI prompt
 - Settings: hotkey and AI preferences
 - AI: OpenAI image edit client
+- Update: GitHub release checker (notifications)
+- Clipboard: clipboard monitor + log store
+- Utils: app paths, version utilities, defaults
 
 ## Architecture
 
 1. **AiShot**: Sets up the menu bar icon and handles app lifecycle
 2. **ScreenshotManager**: Manages screen capture using ScreenCaptureKit
-3. **OverlayWindow**: Displays full-screen overlay with:
+3. **OverlayWindow**: Displays a full-screen overlay with:
    - Fixed background image (captured screen)
    - Region selection (drag to select)
    - Region editing (move, resize, re-select)
@@ -137,12 +157,15 @@ AiShot/
    - Toolbar with tools and action buttons
    - AI prompt for editing the selected region
    - All editing happens in overlay mode without switching windows
+4. **UpdateManager** (optional): Checks GitHub releases and posts notifications
+5. **ClipboardMonitor** (optional): Watches clipboard changes and logs entries
 
 ## Key Technologies
 
 - **ScreenCaptureKit**: macOS framework for screen capture
 - **AppKit**: Native macOS UI framework
 - **CGContext**: Core Graphics for drawing and image manipulation
+- **UserNotifications**: Update notifications
 
 ## Troubleshooting
 
@@ -168,6 +191,11 @@ AiShot/
 
 - Check file system permissions
 - Make sure you have write access to the selected directory
+
+### Update Notifications Not Appearing
+
+- Make sure notifications are enabled for AiShot in System Settings > Notifications
+- The update checker polls hourly by default
 
 ## Future Enhancements
 
