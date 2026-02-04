@@ -10,14 +10,12 @@
 ### Xcode
 build/
 DerivedData/
-*.xcuserstate
 xcuserdata/
-xcshareddata/
-*.moved-aside
-*.xccheckout
-*.xcscmblueprint
-*.xcscheme
-!default.xcscheme
+*.xcuserstate
+*.xcuserdatad
+
+*.pbxuser
+!default.pbxuser
 *.xcworkspace
 !*.xcworkspace/contents.xcworkspacedata
 !*.xcworkspace/xcshareddata/

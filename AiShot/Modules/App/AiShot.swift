@@ -2,6 +2,7 @@ import SwiftUI
 import ScreenCaptureKit
 import Carbon
 import ServiceManagement
+import AppKit
 
 @main
 struct AiShot: App {
@@ -25,8 +26,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Hide dock icon
         NSApp.setActivationPolicy(.accessory)
         ProcessInfo.processInfo.disableAutomaticTermination("Keep menu bar app alive")
-        SettingsStore.registerDefaults()
-        // registerLaunchAtLogin()
+        registerSettingsDefaults()
+        AppPaths.ensureCacheStructure()
+        registerLaunchAtLogin()
 
         if let appIcon = NSImage(named: "AppIcon") {
             NSApp.applicationIconImage = appIcon

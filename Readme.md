@@ -1,19 +1,23 @@
 # AiShot
 
-A macOS screenshot tool built with Swift that focuses on AI-powered region edits alongside fast capture and annotation.
+AiShot is a **lightshot-style** macOS menu bar screenshot tool built with Swift. It brings the familiar lightshot workflow to Mac: fast region capture, lightshot-style selection overlay, and optional AI-powered edits for selected areas.
+
+![AiShot Screenshot](screenshot.png)
 
 ## Features
 
-- Menu bar app
-- Fast region capture
-- AI edit for a selected area (API key required)
-- Simple drawing tools
+- Menu bar app (no Dock icon)
+- Lightshot-style fast region capture with a fixed overlay
+- Move, resize, and re-select regions (lightshot workflow)
+- Lightshot-inspired drawing tools: pen, line, arrow, rectangle, circle
 - Copy, save, or cancel quickly
 - Custom hotkey
+- Optional AI edit for a selected area (API key required)—beyond classic lightshot
+- Update check notifications (optional)
 
 ## Requirements
 
-- macOS 26.0 or later
+- macOS 14.6 or later
 - Xcode 16.0 or later
 - Screen Recording permission (requested on first run)
 
@@ -21,6 +25,12 @@ A macOS screenshot tool built with Swift that focuses on AI-powered region edits
 
 - App version: 0.1.0
 - Build: 1
+
+To sync these values with `AiShot/Info.plist`, run:
+
+```bash
+scripts/update_readme_version.sh
+```
 
 ## Setup Instructions
 
@@ -60,29 +70,29 @@ In your Xcode project:
 1. Build the project (Cmd+B)
 2. Run the app (Cmd+R)
 3. On first run, grant Screen Recording permission when prompted
+
 ### AI Setup (Optional)
 
 1. Open Settings from the menu bar
 2. Add your OpenAI API key
 3. Pick an AI model
-
-4. If permission dialog doesn't appear:
+4. If the permission dialog doesn't appear:
    - Go to System Settings > Privacy & Security > Screen Recording
    - Add your app manually
 
 ## Usage
 
-### Taking a Screenshot
+### Taking a Screenshot (Lightshot-style)
 
 1. Click the camera icon in the menu bar
 2. Select "Take Screenshot..."
-3. The screen is captured and displayed as a fixed overlay
-4. Click and drag to select a region
+3. The screen is captured and displayed as a lightshot-style fixed overlay
+4. Click and drag to select a region (classic lightshot selection)
 5. Press ESC to cancel at any time
 
 ### Editing the Selection
 
-Once you've selected a region, you can:
+Once you've selected a region lightshot-style, you can:
 
 1. **Re-select a region**: Click and drag anywhere outside the current selection to create a new selection
 2. **Move the region**: Click and drag inside the selected area (when no tool is active)
@@ -94,9 +104,9 @@ Once you've selected a region, you can:
 
 ### Tools and Controls
 
-The toolbar appears below the selected region with:
+The lightshot-style toolbar appears below the selected region with:
 
-**Drawing Tools**:
+**Drawing Tools** (lightshot-inspired):
 - Pen - Freehand drawing
 - Line - Straight lines
 - Arrow - Arrows with arrowheads
@@ -114,22 +124,31 @@ The toolbar appears below the selected region with:
 AiShot/
 ├── AiShot.xcodeproj
 ├── Assets.xcassets
-└── Modules/ (app, capture, overlay, settings, AI)
+└── Modules/
+    ├── App
+    ├── Capture
+    ├── Overlay
+    ├── Settings
+    ├── AI
+    ├── Update
+    └── Utils
 ```
 
 ### Modules
 
 - App: app entry and menu bar setup
-- Capture: screen capture pipeline
-- Overlay: selection UI, tools, and AI prompt
+- Capture: lightshot-style screen capture pipeline
+- Overlay: lightshot-style selection UI, tools, and AI prompt
 - Settings: hotkey and AI preferences
 - AI: OpenAI image edit client
+- Update: GitHub release checker (notifications)
+- Utils: app paths, version utilities, defaults
 
 ## Architecture
 
-1. **AiShot**: Sets up the menu bar icon and handles app lifecycle
-2. **ScreenshotManager**: Manages screen capture using ScreenCaptureKit
-3. **OverlayWindow**: Displays full-screen overlay with:
+1. **AiShot**: Sets up the menu bar icon and handles app lifecycle (lightshot-style)
+2. **ScreenshotManager**: Manages lightshot-style screen capture using ScreenCaptureKit
+3. **OverlayWindow**: Displays a full-screen lightshot overlay with:
    - Fixed background image (captured screen)
    - Region selection (drag to select)
    - Region editing (move, resize, re-select)
@@ -137,12 +156,14 @@ AiShot/
    - Toolbar with tools and action buttons
    - AI prompt for editing the selected region
    - All editing happens in overlay mode without switching windows
+4. **UpdateManager** (optional): Checks GitHub releases and posts notifications
 
 ## Key Technologies
 
-- **ScreenCaptureKit**: macOS framework for screen capture
+- **ScreenCaptureKit**: macOS framework for lightshot-style screen capture
 - **AppKit**: Native macOS UI framework
 - **CGContext**: Core Graphics for drawing and image manipulation
+- **UserNotifications**: Update notifications
 
 ## Troubleshooting
 
@@ -160,7 +181,7 @@ AiShot/
 
 ### Drawing Tools Not Working
 
-- Make sure you've clicked a tool button first
+- Lightshot-style tools require clicking a tool button first
 - Tools only work inside the captured image area
 - Click the tool button again to deselect
 
@@ -169,8 +190,14 @@ AiShot/
 - Check file system permissions
 - Make sure you have write access to the selected directory
 
+### Update Notifications Not Appearing
+
+- Make sure notifications are enabled for AiShot in System Settings > Notifications
+- The update checker polls hourly by default
+
 ## Future Enhancements
 
+- More lightshot-like shortcuts and workflows for power users.
 - Better AI mask controls to refine edit regions with less manual cleanup.
 - More AI models and presets to match different creative styles and use cases.
 - Privacy tools (blur/pixelate) to quickly redact sensitive content.
@@ -185,6 +212,7 @@ This is a demonstration project. Feel free to modify and use as needed.
 
 ## Notes
 
+- AiShot offers a lightshot-like experience for macOS users
 - The app uses `UserNotifications` for quick feedback notifications
 - Screen capture requires ScreenCaptureKit
 - The app sets itself as `.accessory` to hide from the dock

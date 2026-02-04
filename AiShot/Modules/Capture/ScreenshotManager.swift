@@ -7,7 +7,7 @@ extension Notification.Name {
 
 class ScreenshotManager {
     var overlayWindows: [OverlayWindow] = []
-    
+
     init() {
         NotificationCenter.default.addObserver(
             self,
@@ -22,7 +22,7 @@ class ScreenshotManager {
             await captureScreens()
         }
     }
-    
+
     @MainActor
     private func captureScreens() async {
         do {

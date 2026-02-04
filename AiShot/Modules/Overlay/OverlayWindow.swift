@@ -8,7 +8,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
     weak var overlayWindow: OverlayWindow?
     
     // Selection state
-    var mode: SelectionMode = .creating
+    var mode: ActionMode = .creating
     var startPoint: NSPoint?
     var currentPoint: NSPoint?
     var selectedRect: NSRect?
@@ -20,7 +20,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
     var lastDragPoint: NSPoint?
     
     // Drawing
-    var currentTool: DrawingTool = .move
+    var currentTool: ToolMode = .move
     var currentStrokeColor: NSColor = .red
     var currentFillColor: NSColor? = nil
     var currentLineWidth: CGFloat = 3.0
@@ -32,8 +32,11 @@ class SelectionView: NSView, NSTextFieldDelegate {
     var activeTextField: NSTextField?
     var activeTextRect: NSRect?
     var textAreaDragStart: NSPoint?
+    var textAreaDragCurrent: NSPoint?
     var textControlPoints: [NSRect] = []
     var resizingTextAreaCorner: Int?
+    var editingTextElementIndex: Int?
+    var editingTextOriginalElement: DrawingElement?
     let textAreaDefaultWidth: CGFloat = 200
     let textAreaMinWidth: CGFloat = 40
     let textAreaDefaultHeight: CGFloat = 60
@@ -55,7 +58,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
     
     // UI Elements
     var toolButtons: [ToolbarButton] = []
-    var toolButtonTypes: [DrawingTool] = []
+    var toolButtonTypes: [ToolMode] = []
     var actionButtons: [ToolbarButton] = []
     var toolbarView: NSVisualEffectView?
     var separatorViews: [NSView] = []
@@ -108,9 +111,9 @@ class SelectionView: NSView, NSTextFieldDelegate {
         ("Avenir Next", "Avenir Next")
     ]
 
-    var isDrawingTool: Bool {
+    var isToolMode: Bool {
         switch currentTool {
-        case .pen, .line, .arrow, .rectangle, .circle:
+        case .pen, .line, .arrow, .rectangle, .ellipse:
             return true
         default:
             return false
@@ -180,7 +183,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
         drawDimOverlay(in: context)
         
         // Draw selection rectangle
-        if let start = startPoint, let current = currentPoint, mode == .creating {
+        if let start = startPoint, let current = currentPoint, mode == .creating, selectedRect == nil {
             let rect = normalizedRect(from: start, to: current)
             drawSelectionArea(rect, in: context)
             drawCenterGuides(for: rect, in: context)
@@ -198,7 +201,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
             drawElementHighlights(in: context)
             
             // Draw current drawing
-                if mode == .drawing {
+                if mode == .creating, drawingStartPoint != nil {
                     drawCurrentDrawing(in: context)
                 }
                 if aiIsSendingPrompt, currentTool == .ai {
@@ -220,7 +223,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
             drawSizeLabel(for: rect, in: context)
 
             // Draw text area overlay when defining or editing
-            if mode == .creatingText, let start = startPoint, let current = currentPoint {
+            if currentTool == .text, let start = textAreaDragStart, let current = textAreaDragCurrent {
                 let textRect = normalizedRect(from: start, to: current)
                 drawAIEditRect(textRect, in: context)
                 drawControlPoints(for: textRect, in: context, size: 8)
@@ -268,35 +271,68 @@ class SelectionView: NSView, NSTextFieldDelegate {
     @objc func saveImage() {
         guard let rect = selectedRect else { return }
         let finalImage = aiResultImage ?? renderFinalImage(for: rect)
-        let fileManager = FileManager.default
-        let cacheDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first
-        let bundleId = Bundle.main.bundleIdentifier ?? "AiShot"
-        let targetDirectory = cacheDirectory?.appendingPathComponent(bundleId, isDirectory: true)
-        if let targetDirectory {
-            do {
-                try fileManager.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
-            } catch {
-                showNotification(message: "Save failed")
-                NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
-                return
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+
+            // If you're a menu-bar/agent app, temporarily become a normal app
+            let previousPolicy = NSApp.activationPolicy()
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.png]
+            panel.canCreateDirectories = true
+            panel.isExtensionHidden = false
+            panel.nameFieldStringValue = "Screenshot-\(Int(Date().timeIntervalSince1970)).png"
+            if let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first {
+                panel.directoryURL = pictures
+            }
+
+            let restorePolicy: () -> Void = {
+                // Put it back if you want to remain a menu-bar style app
+                NSApp.setActivationPolicy(previousPolicy)
+            }
+
+            // Prefer a sheet if you have a window; otherwise use begin()
+            if let window = NSApp.keyWindow ?? NSApp.windows.first {
+                panel.beginSheetModal(for: window) { result in
+                    defer { restorePolicy() }
+
+                    if result == .OK, let targetURL = panel.url {
+                        self.writePNG(finalImage, to: targetURL)
+                        NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
+                    }
+                }
+            } else {
+                panel.begin { result in
+                    defer { restorePolicy() }
+
+                    if result == .OK, let targetURL = panel.url {
+                        self.writePNG(finalImage, to: targetURL)
+                        NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
+                    }
+                }
             }
         }
-        let filename = "Screenshot-\(Int(Date().timeIntervalSince1970)).png"
-        let fallbackDirectory = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        let targetURL = (targetDirectory ?? cacheDirectory ?? fallbackDirectory).appendingPathComponent(filename)
+    }
 
-        if let destination = CGImageDestinationCreateWithURL(targetURL as CFURL, UTType.png.identifier as CFString, 1, nil) {
-            CGImageDestinationAddImage(destination, finalImage, nil)
+    private func writePNG(_ image: CGImage, to url: URL) {
+        if let destination = CGImageDestinationCreateWithURL(url as CFURL,
+                                                            UTType.png.identifier as CFString,
+                                                            1,
+                                                            nil) {
+            CGImageDestinationAddImage(destination, image, nil)
             if CGImageDestinationFinalize(destination) {
-                showNotification(message: "Saved to cache")
+                showNotification(message: "Saved image")
             } else {
                 showNotification(message: "Save failed")
             }
         } else {
             showNotification(message: "Save failed")
         }
-        NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
     }
+
     
     @objc func closeOverlay() {
         NotificationCenter.default.post(name: .closeAllOverlays, object: nil)
@@ -370,10 +406,10 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 let rect = normalizedRect(from: start, to: end)
                 element = DrawingElement(type: .rectangle(rect: rect), strokeColor: currentStrokeColor, fillColor: currentFillColor, lineWidth: currentLineWidth, fontSize: currentFontSize, fontName: currentFontName)
             } else { return }
-        case .circle:
+        case .ellipse:
             if let start = drawingStartPoint, let end = currentDrawingPoints.last {
                 let rect = normalizedRect(from: start, to: end)
-                element = DrawingElement(type: .circle(rect: rect), strokeColor: currentStrokeColor, fillColor: currentFillColor, lineWidth: currentLineWidth, fontSize: currentFontSize, fontName: currentFontName)
+                element = DrawingElement(type: .ellipse(rect: rect), strokeColor: currentStrokeColor, fillColor: currentFillColor, lineWidth: currentLineWidth, fontSize: currentFontSize, fontName: currentFontName)
             } else { return }
         case .text:
             return
@@ -383,7 +419,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
             return
         case .move:
             return
-        case .none:
+        case .select:
             return
         case .ai:
             return
@@ -653,8 +689,14 @@ class SelectionView: NSView, NSTextFieldDelegate {
              .arrow(let start, let end):
             return distanceToSegment(point, start, end) <= tolerance
         case .rectangle(let rect):
+            if element.fillColor != nil, rect.contains(point) {
+                return true
+            }
             return rectEdgeHitTest(rect, point: point, tolerance: tolerance)
-        case .circle(let rect):
+        case .ellipse(let rect):
+            if element.fillColor != nil, ellipseContainsPoint(rect, point: point) {
+                return true
+            }
             return ellipseEdgeHitTest(rect, point: point, tolerance: tolerance)
         case .text(_, let textRect):
             return textRect.insetBy(dx: -tolerance, dy: -tolerance).contains(point)
@@ -700,14 +742,14 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 height: rect.height
             )
             return DrawingElement(type: .rectangle(rect: newRect), strokeColor: element.strokeColor, fillColor: element.fillColor, lineWidth: element.lineWidth, fontSize: element.fontSize, fontName: element.fontName)
-        case .circle(let rect):
+        case .ellipse(let rect):
             let newRect = NSRect(
                 x: rect.origin.x + delta.x,
                 y: rect.origin.y + delta.y,
                 width: rect.width,
                 height: rect.height
             )
-            return DrawingElement(type: .circle(rect: newRect), strokeColor: element.strokeColor, fillColor: element.fillColor, lineWidth: element.lineWidth, fontSize: element.fontSize, fontName: element.fontName)
+            return DrawingElement(type: .ellipse(rect: newRect), strokeColor: element.strokeColor, fillColor: element.fillColor, lineWidth: element.lineWidth, fontSize: element.fontSize, fontName: element.fontName)
         case .text(let text, let rect):
             let newRect = NSRect(
                 x: rect.origin.x + delta.x,
@@ -777,7 +819,33 @@ class SelectionView: NSView, NSTextFieldDelegate {
         window?.makeFirstResponder(field)
         activeTextField = field
         activeTextRect = clipRect
+        mode = .editing
         updateTextControlPoints()
+    }
+
+    func startTextEdit(for element: DrawingElement, at index: Int) {
+        guard case .text(let text, let rect) = element.type else { return }
+        editingTextElementIndex = index
+        editingTextOriginalElement = element
+        mode = .editing
+        if index >= 0, index < drawingElements.count {
+            drawingElements.remove(at: index)
+        }
+        selectedElementIndex = nil
+        hoverEraserIndex = nil
+        currentTool = .text
+        currentStrokeColor = element.strokeColor
+        currentFontSize = element.fontSize
+        currentFontName = element.fontName
+        currentLineWidth = element.lineWidth
+        strokeColorButton?.swatchColor = currentStrokeColor
+        updateToolButtonStates()
+        startTextEntry(in: rect)
+        activeTextField?.stringValue = text
+        activeTextField?.textColor = currentStrokeColor
+        activeTextField?.font = fontFromElement(element)
+        updateTextControlPoints()
+        needsDisplay = true
     }
     
     func controlTextDidEndEditing(_ notification: Notification) {
@@ -792,7 +860,7 @@ class SelectionView: NSView, NSTextFieldDelegate {
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     defer { self.isDeferringTextFinishForResize = false }
-                    if self.mode == .resizingTextArea {
+                    if self.mode == .resizing, self.resizingTextAreaCorner != nil {
                         return
                     }
                     self.finishActiveTextEntry(commit: true)
@@ -818,13 +886,24 @@ class SelectionView: NSView, NSTextFieldDelegate {
                     fontSize: currentFontSize,
                     fontName: currentFontName
                 )
-                drawingElements.append(element)
+                if let index = editingTextElementIndex {
+                    let targetIndex = min(index, drawingElements.count)
+                    drawingElements.insert(element, at: targetIndex)
+                } else {
+                    drawingElements.append(element)
+                }
             }
+        } else if let original = editingTextOriginalElement, let index = editingTextElementIndex {
+            let targetIndex = min(index, drawingElements.count)
+            drawingElements.insert(original, at: targetIndex)
         }
         field.removeFromSuperview()
         activeTextField = nil
         activeTextRect = nil
         textControlPoints.removeAll()
+        editingTextElementIndex = nil
+        editingTextOriginalElement = nil
+        mode = .editing
         needsDisplay = true
     }
 
@@ -849,11 +928,13 @@ class SelectionView: NSView, NSTextFieldDelegate {
         selectedRect = nil
         controlPoints.removeAll()
         drawingElements.removeAll()
-        currentTool = .none
+        currentTool = .move
         activeTextField?.removeFromSuperview()
         activeTextField = nil
         activeTextRect = nil
         textControlPoints.removeAll()
+        editingTextElementIndex = nil
+        editingTextOriginalElement = nil
         clearToolbar()
         needsDisplay = true
     }
