@@ -18,8 +18,23 @@ AiShot is a **lightshot-style** macOS menu bar screenshot tool built with Swift.
 ## Requirements
 
 - macOS 14.6 or later
-- Xcode 16.0 or later
 - Screen Recording permission (requested on first run)
+
+## Installation
+
+Install the latest release to `/Applications`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Icebitz/ai-screenshot/main/scripts/install.sh | bash
+```
+
+Or, from a clone of this repo:
+
+```bash
+scripts/install.sh
+```
+
+The script downloads the AiShot zip from [GitHub releases](https://github.com/Icebitz/ai-screenshot/releases), extracts it, installs to `/Applications`, removes Gatekeeper quarantine, and launches the app. Requires `curl`, `unzip`, and macOS.
 
 ## Version
 
@@ -36,9 +51,7 @@ scripts/update_readme_version.sh
 
 ### 1. Open the Project
 
-1. Open Xcode
-2. Open `AiShot.xcodeproj`
-3. Select the `AiShot` target
+Open `AiShot.xcodeproj`, select the `AiShot` target.
 
 ### 2. Configure Info.plist
 
@@ -48,7 +61,6 @@ Replace or update your Info.plist with the provided one. Key settings:
 
 ### 3. Add Required Frameworks
 
-In your Xcode project:
 1. Select your project in the navigator
 2. Select your target
 3. Go to "Frameworks, Libraries, and Embedded Content"
@@ -124,6 +136,9 @@ The lightshot-style toolbar appears below the selected region with:
 AiShot/
 ├── AiShot.xcodeproj
 ├── Assets.xcassets
+├── scripts/
+│   ├── install.sh          # Install release to /Applications
+│   └── update_readme_version.sh
 └── Modules/
     ├── App
     ├── Capture
